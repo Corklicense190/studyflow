@@ -11,6 +11,7 @@
 // antes que cualquier otro require que las use.
 require('dotenv').config();
 
+const path         = require('path');
 const express      = require('express');
 const helmet       = require('helmet');
 const entregables  = require('./routes/entregables');
@@ -29,12 +30,23 @@ const PORT = process.env.PORT || 3000;
 // X-Frame-Options, Content-Security-Policy basica, etc.) con
 // valores por defecto razonables. Va primero, antes de cualquier
 // otra cosa, para que aplique a toda respuesta sin excepcion.
+//
+// El CSP por defecto de Helmet ya es compatible con el frontend
+// sin abrir ninguna excepcion: el CSS de Tailwind se sirve
+// PRE-COMPILADO (npm run build:css), no hay scripts externos ni
+// 'unsafe-eval', y todo el JS/CSS es propio ('self'). A proposito
+// se evito el CDN de Tailwind (compila en el navegador con JS y
+// necesitaria relajar el CSP), justo para no tener que tocar esto.
 app.use(helmet());
 
 // express.json() parsea el cuerpo de las peticiones que lleguen
 // con Content-Type: application/json y lo deja disponible en
 // req.body. Sin esto, req.body sería undefined.
 app.use(express.json());
+
+// Sirve el frontend estatico (public/index.html, css, js). Express
+// ya resuelve "/" -> "public/index.html" automaticamente si existe.
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Registro de routers ──────────────────────────────────────
 
@@ -51,10 +63,11 @@ app.use('/api/horarios-fijos', horarios);
 // horario de estudio calculado por el algoritmo).
 app.use('/api/plan', plan);
 
-// ── Ruta raíz de verificación ────────────────────────────────
-// Sirve para confirmar rápidamente que el servidor está vivo
-// sin tener que consultar ningún recurso real.
-app.get('/', (req, res) => {
+// ── Ruta de verificación de la API ────────────────────────────
+// "/" ahora la sirve el frontend estatico (public/index.html).
+// Esta ruta queda para confirmar rápidamente que el servidor y
+// la API siguen vivos sin depender del frontend.
+app.get('/api/status', (req, res) => {
   res.json({ mensaje: 'StudyFlow API funcionando correctamente 🎓' });
 });
 
@@ -71,13 +84,16 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ StudyFlow escuchando en http://localhost:${PORT}`);
   console.log('   Rutas disponibles:');
-  console.log('   GET  /');
+  console.log('   GET    /                       (frontend)');
+  console.log('   GET    /api/status');
   console.log('   POST   /api/entregables');
   console.log('   GET    /api/entregables');
   console.log('   PUT    /api/entregables/:id');
   console.log('   DELETE /api/entregables/:id');
   console.log('   POST   /api/horarios-fijos');
   console.log('   GET    /api/horarios-fijos');
+  console.log('   PUT    /api/horarios-fijos/:id');
+  console.log('   DELETE /api/horarios-fijos/:id');
   console.log('   POST   /api/plan/generar');
   console.log('   GET    /api/plan');
 });

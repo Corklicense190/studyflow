@@ -13,7 +13,7 @@
 
 const express = require('express');
 const router  = express.Router();
-const { body, validationResult } = require('express-validator');
+const { body, param, validationResult } = require('express-validator');
 
 // Misma conexión que usan los demás routers.
 const db = require('../db/database');
@@ -40,42 +40,51 @@ function manejarErroresValidacion(req, res, next) {
   next();
 }
 
-// ── Reglas de validación para POST /api/horarios-fijos ───────
-const reglasHorario = [
-  body('dia_semana')
-    .trim()
-    .toLowerCase()
-    .isIn(DIAS_VALIDOS)
-    .withMessage(`dia_semana inválido. Valores permitidos: ${DIAS_VALIDOS.join(', ')}`),
+// ── Reglas de validación compartidas entre POST y PUT ────────
+// Igual que en entregables.js: en PUT los campos son opcionales
+// (solo se actualiza lo que venga en el body).
+function reglasHorario(esOpcional) {
+  const envoltura = (validador) => esOpcional ? validador.optional() : validador;
 
-  body('hora_inicio')
-    .trim()
-    .matches(REGEX_HORA)
-    .withMessage('hora_inicio debe tener formato HH:MM (24 horas), ej. 08:30'),
+  return [
+    envoltura(body('dia_semana'))
+      .trim()
+      .toLowerCase()
+      .isIn(DIAS_VALIDOS)
+      .withMessage(`dia_semana inválido. Valores permitidos: ${DIAS_VALIDOS.join(', ')}`),
 
-  body('hora_fin')
-    .trim()
-    .matches(REGEX_HORA)
-    .withMessage('hora_fin debe tener formato HH:MM (24 horas), ej. 10:00'),
+    envoltura(body('hora_inicio'))
+      .trim()
+      .matches(REGEX_HORA)
+      .withMessage('hora_inicio debe tener formato HH:MM (24 horas), ej. 08:30'),
 
-  // Comparamos strings HH:MM directamente: funciona porque el
-  // formato ya quedó validado arriba y es lexicográfico == cronológico.
-  body('hora_fin').custom((hora_fin, { req }) => {
-    if (req.body.hora_inicio && hora_fin <= req.body.hora_inicio) {
-      throw new Error('hora_inicio debe ser anterior a hora_fin');
-    }
-    return true;
-  }),
+    envoltura(body('hora_fin'))
+      .trim()
+      .matches(REGEX_HORA)
+      .withMessage('hora_fin debe tener formato HH:MM (24 horas), ej. 10:00'),
 
-  // descripcion es opcional; si viene, se recorta y se escapa
-  // igual que "materia" en entregables.js para evitar XSS.
-  body('descripcion')
-    .optional({ checkFalsy: true })
-    .trim()
-    .escape()
-    .isLength({ max: 200 })
-    .withMessage('descripcion no puede superar 200 caracteres'),
-];
+    // Comparamos strings HH:MM directamente: funciona porque el
+    // formato ya quedó validado arriba y es lexicográfico == cronológico.
+    // En PUT, si solo viene uno de los dos campos, no hay con qué
+    // comparar (el otro sigue siendo el valor viejo en la BD), así
+    // que este chequeo cruzado se salta en ese caso.
+    body('hora_fin').custom((hora_fin, { req }) => {
+      if (hora_fin && req.body.hora_inicio && hora_fin <= req.body.hora_inicio) {
+        throw new Error('hora_inicio debe ser anterior a hora_fin');
+      }
+      return true;
+    }),
+
+    // descripcion es opcional; si viene, se recorta y se escapa
+    // igual que "materia" en entregables.js para evitar XSS.
+    body('descripcion')
+      .optional({ checkFalsy: true })
+      .trim()
+      .escape()
+      .isLength({ max: 200 })
+      .withMessage('descripcion no puede superar 200 caracteres'),
+  ];
+}
 
 // ── POST /api/horarios-fijos ─────────────────────────────────
 // Registra un nuevo compromiso fijo (clase, trabajo, deporte…).
@@ -83,7 +92,7 @@ const reglasHorario = [
 // Campo opcional:   descripcion.
 router.post(
   '/',
-  reglasHorario,
+  reglasHorario(false),
   manejarErroresValidacion,
   (req, res) => {
     const { dia_semana, hora_inicio, hora_fin, descripcion } = req.body;
@@ -134,6 +143,66 @@ router.get('/', (req, res) => {
     res.status(500).json({ error: 'Error al obtener los horarios fijos', detalle: err.message });
   }
 });
+
+// ── PUT /api/horarios-fijos/:id ──────────────────────────────
+// Actualiza uno o más campos de un horario fijo existente.
+router.put(
+  '/:id',
+  param('id').isInt({ min: 1 }).withMessage('id debe ser un entero positivo').toInt(),
+  reglasHorario(true),
+  manejarErroresValidacion,
+  (req, res) => {
+    const { id } = req.params;
+    const { dia_semana, hora_inicio, hora_fin, descripcion } = req.body;
+
+    try {
+      const existente = db.prepare('SELECT id FROM horarios_fijos WHERE id = ?').get(id);
+
+      if (!existente) {
+        return res.status(404).json({ error: `No existe el horario fijo con id ${id}` });
+      }
+
+      const stmt = db.prepare(`
+        UPDATE horarios_fijos
+        SET dia_semana  = COALESCE(?, dia_semana),
+            hora_inicio = COALESCE(?, hora_inicio),
+            hora_fin    = COALESCE(?, hora_fin),
+            descripcion = COALESCE(?, descripcion)
+        WHERE id = ?
+      `);
+
+      stmt.run(dia_semana || null, hora_inicio || null, hora_fin || null, descripcion || null, id);
+
+      res.json({ mensaje: `Horario fijo ${id} actualizado correctamente` });
+    } catch (err) {
+      res.status(500).json({ error: 'Error al actualizar el horario fijo', detalle: err.message });
+    }
+  }
+);
+
+// ── DELETE /api/horarios-fijos/:id ───────────────────────────
+router.delete(
+  '/:id',
+  param('id').isInt({ min: 1 }).withMessage('id debe ser un entero positivo').toInt(),
+  manejarErroresValidacion,
+  (req, res) => {
+    const { id } = req.params;
+
+    try {
+      const existente = db.prepare('SELECT id FROM horarios_fijos WHERE id = ?').get(id);
+
+      if (!existente) {
+        return res.status(404).json({ error: `No existe el horario fijo con id ${id}` });
+      }
+
+      db.prepare('DELETE FROM horarios_fijos WHERE id = ?').run(id);
+
+      res.json({ mensaje: `Horario fijo ${id} eliminado correctamente` });
+    } catch (err) {
+      res.status(500).json({ error: 'Error al eliminar el horario fijo', detalle: err.message });
+    }
+  }
+);
 
 // Exportamos el router para registrarlo en server.js.
 module.exports = router;
