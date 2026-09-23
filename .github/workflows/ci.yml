@@ -1,0 +1,52 @@
+# ============================================================
+# .github/workflows/ci.yml
+# Pipeline de DevSecOps "shift-left" del CLAUDE.md: corre en
+# cada Pull Request hacia main (que esta protegida, no admite
+# push directo). Si cualquier paso falla, bloquea el merge.
+#
+# Orden de los pasos, de mas rapido/barato a mas lento:
+#   1. ESLint + eslint-plugin-security (SAST del codigo propio)
+#   2. npm audit (SCA de dependencias de terceros)
+#   3. Jest (pruebas unitarias, sobre todo del algoritmo)
+# ============================================================
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el codigo del repo
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # npm ci (no "npm install") instala exactamente lo que dice
+      # package-lock.json, sin recalcular versiones — es lo correcto
+      # en CI para que el pipeline sea reproducible.
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: SAST — ESLint (eslint-plugin-security)
+        run: npm run lint
+
+      # --audit-level=high para no bloquear el merge por
+      # vulnerabilidades de severidad baja/moderada en dependencias
+      # transitivas (comunes y casi siempre sin exploit real para
+      # este proyecto); alta/critica si detiene el pipeline.
+      - name: SCA — npm audit
+        run: npm audit --audit-level=high
+
+      - name: Pruebas unitarias — Jest
+        run: npm test

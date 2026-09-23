@@ -12,6 +12,7 @@
 require('dotenv').config();
 
 const express      = require('express');
+const helmet       = require('helmet');
 const entregables  = require('./routes/entregables');
 const horarios     = require('./routes/horarios');
 const plan         = require('./routes/plan');
@@ -23,6 +24,12 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 
 // ── Middlewares globales ─────────────────────────────────────
+
+// Helmet agrega headers de seguridad HTTP (X-Content-Type-Options,
+// X-Frame-Options, Content-Security-Policy basica, etc.) con
+// valores por defecto razonables. Va primero, antes de cualquier
+// otra cosa, para que aplique a toda respuesta sin excepcion.
+app.use(helmet());
 
 // express.json() parsea el cuerpo de las peticiones que lleguen
 // con Content-Type: application/json y lo deja disponible en
