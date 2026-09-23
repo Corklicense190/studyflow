@@ -7,13 +7,19 @@
 //   3. Arrancar el servidor en el puerto 3000.
 // ============================================================
 
+// dotenv carga las variables de .env en process.env. Se llama
+// antes que cualquier otro require que las use.
+require('dotenv').config();
+
 const express      = require('express');
 const entregables  = require('./routes/entregables');
 const horarios     = require('./routes/horarios');
 
 // Creamos la instancia principal de Express.
 const app  = express();
-const PORT = 3000;
+
+// Si no hay .env (o no define PORT), cae en 3000 por defecto.
+const PORT = process.env.PORT || 3000;
 
 // ── Middlewares globales ─────────────────────────────────────
 
