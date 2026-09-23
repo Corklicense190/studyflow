@@ -19,7 +19,7 @@ function cambiarTab(nombre) {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.tab-boton').forEach(boton => {
     boton.addEventListener('click', () => cambiarTab(boton.dataset.tab));
   });
@@ -34,6 +34,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (evento.key === 'Escape') cerrarModalConfirmacion();
   });
 
+  inicializarAuth();
+
+  // Los datos (entregables, horarios, plan) solo se piden si hay
+  // sesión. Sin ella no se hace ninguna petición a la API de datos:
+  // se muestra la pantalla de login y listo.
+  let usuario;
+  try {
+    ({ usuario } = await api.auth.yo());
+  } catch {
+    mostrarVistaAuth();
+    return;
+  }
+
+  mostrarVistaApp(usuario);
   inicializarEntregables();
   inicializarHorarios();
   inicializarPlan();

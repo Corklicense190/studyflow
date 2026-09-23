@@ -99,19 +99,21 @@ router.post(
 
     try {
       const stmt = db.prepare(`
-        INSERT INTO horarios_fijos (dia_semana, hora_inicio, hora_fin, descripcion)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO horarios_fijos (usuario_id, dia_semana, hora_inicio, hora_fin, descripcion)
+        VALUES (?, ?, ?, ?, ?)
       `);
 
-      // Si descripcion no vino en el body, insertamos NULL.
-      const resultado = stmt.run(dia_semana, hora_inicio, hora_fin, descripcion || null);
+      // Si descripcion no vino en el body, insertamos NULL. usuario_id
+      // sale de la sesión, nunca del body.
+      const resultado = stmt.run(req.session.usuarioId, dia_semana, hora_inicio, hora_fin, descripcion || null);
 
       res.status(201).json({
         mensaje: 'Horario fijo registrado exitosamente',
         id: resultado.lastInsertRowid
       });
     } catch (err) {
-      res.status(500).json({ error: 'Error al registrar el horario fijo', detalle: err.message });
+      console.error(err);
+      res.status(500).json({ error: 'Error al registrar el horario fijo' });
     }
   }
 );
@@ -124,7 +126,9 @@ router.get('/', (req, res) => {
     // Ordenamos usando CASE para respetar el orden natural de la
     // semana en lugar del orden alfabético de SQLite.
     const horarios = db.prepare(`
-      SELECT * FROM horarios_fijos
+      SELECT id, dia_semana, hora_inicio, hora_fin, descripcion
+      FROM horarios_fijos
+      WHERE usuario_id = ?
       ORDER BY
         CASE dia_semana
           WHEN 'lunes'     THEN 1
@@ -136,11 +140,12 @@ router.get('/', (req, res) => {
           WHEN 'domingo'   THEN 7
         END,
         hora_inicio ASC
-    `).all();
+    `).all(req.session.usuarioId);
 
     res.json(horarios);
   } catch (err) {
-    res.status(500).json({ error: 'Error al obtener los horarios fijos', detalle: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener los horarios fijos' });
   }
 });
 
@@ -156,7 +161,11 @@ router.put(
     const { dia_semana, hora_inicio, hora_fin, descripcion } = req.body;
 
     try {
-      const existente = db.prepare('SELECT id FROM horarios_fijos WHERE id = ?').get(id);
+      // "AND usuario_id = ?": un usuario solo puede tocar sus propios
+      // horarios (si el id es de otro usuario, responde 404 igual que
+      // si no existiera).
+      const existente = db.prepare('SELECT id FROM horarios_fijos WHERE id = ? AND usuario_id = ?')
+        .get(id, req.session.usuarioId);
 
       if (!existente) {
         return res.status(404).json({ error: `No existe el horario fijo con id ${id}` });
@@ -168,14 +177,15 @@ router.put(
             hora_inicio = COALESCE(?, hora_inicio),
             hora_fin    = COALESCE(?, hora_fin),
             descripcion = COALESCE(?, descripcion)
-        WHERE id = ?
+        WHERE id = ? AND usuario_id = ?
       `);
 
-      stmt.run(dia_semana || null, hora_inicio || null, hora_fin || null, descripcion || null, id);
+      stmt.run(dia_semana || null, hora_inicio || null, hora_fin || null, descripcion || null, id, req.session.usuarioId);
 
       res.json({ mensaje: `Horario fijo ${id} actualizado correctamente` });
     } catch (err) {
-      res.status(500).json({ error: 'Error al actualizar el horario fijo', detalle: err.message });
+      console.error(err);
+      res.status(500).json({ error: 'Error al actualizar el horario fijo' });
     }
   }
 );
@@ -189,17 +199,19 @@ router.delete(
     const { id } = req.params;
 
     try {
-      const existente = db.prepare('SELECT id FROM horarios_fijos WHERE id = ?').get(id);
+      const existente = db.prepare('SELECT id FROM horarios_fijos WHERE id = ? AND usuario_id = ?')
+        .get(id, req.session.usuarioId);
 
       if (!existente) {
         return res.status(404).json({ error: `No existe el horario fijo con id ${id}` });
       }
 
-      db.prepare('DELETE FROM horarios_fijos WHERE id = ?').run(id);
+      db.prepare('DELETE FROM horarios_fijos WHERE id = ? AND usuario_id = ?').run(id, req.session.usuarioId);
 
       res.json({ mensaje: `Horario fijo ${id} eliminado correctamente` });
     } catch (err) {
-      res.status(500).json({ error: 'Error al eliminar el horario fijo', detalle: err.message });
+      console.error(err);
+      res.status(500).json({ error: 'Error al eliminar el horario fijo' });
     }
   }
 );

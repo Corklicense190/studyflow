@@ -34,9 +34,65 @@
           class="rounded-md border border-gray-300 text-sm font-medium px-3 py-1.5 hover:bg-gray-50">
           Modo oscuro
         </button>
+
+        <!-- Solo visible con sesión iniciada (lo muestra public/js/auth.js). -->
+        <div id="usuario-area" class="hidden flex items-center gap-2">
+          <span id="usuario-nombre" class="text-sm text-gray-600"></span>
+          <button type="button" id="boton-logout"
+            class="rounded-md border border-gray-300 text-sm font-medium px-3 py-1.5 hover:bg-gray-50">
+            Cerrar sesión
+          </button>
+        </div>
       </div>
     </div>
   </header>
+
+  <!-- ════════════════════════════════════════════════════════════
+       VISTA: INICIAR SESIÓN / CREAR CUENTA
+       Se muestra cuando no hay sesión (lo decide public/js/app.js).
+       ════════════════════════════════════════════════════════════ -->
+  <section id="vista-auth" class="hidden max-w-md mx-auto px-4 py-10">
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+      <h2 id="auth-titulo" class="text-lg font-semibold mb-1">Iniciar sesión</h2>
+      <p class="text-sm text-gray-500 mb-4">Tus entregables y horarios son privados: solo tú los ves.</p>
+
+      <div id="auth-aviso" class="hidden mb-4 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"></div>
+      <div id="auth-error" class="hidden mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2"></div>
+
+      <form id="form-auth" class="space-y-4">
+        <div>
+          <label for="auth-usuario" class="block text-sm font-medium text-gray-700 mb-1">Usuario</label>
+          <input type="text" id="auth-usuario" required maxlength="30" autocomplete="username"
+            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label for="auth-password" class="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+          <input type="password" id="auth-password" required autocomplete="current-password"
+            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <p id="auth-ayuda-password" class="hidden text-xs text-gray-500 mt-1">Mínimo 8 caracteres.</p>
+        </div>
+        <div id="auth-confirmar-grupo" class="hidden">
+          <label for="auth-confirmar" class="block text-sm font-medium text-gray-700 mb-1">Confirmar contraseña</label>
+          <input type="password" id="auth-confirmar" autocomplete="new-password"
+            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <button type="submit" id="auth-submit"
+          class="w-full rounded-md bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700">
+          Entrar
+        </button>
+      </form>
+
+      <p class="text-sm text-gray-500 mt-4 text-center">
+        <span id="auth-alterna-texto">¿No tienes cuenta?</span>
+        <button type="button" id="auth-alternar" class="text-blue-600 hover:underline">Crear cuenta</button>
+      </p>
+    </div>
+  </section>
+
+  <!-- ════════════════════════════════════════════════════════════
+       VISTA: LA APP (pestañas). Solo con sesión iniciada.
+       ════════════════════════════════════════════════════════════ -->
+  <div id="vista-app" class="hidden">
 
   <!-- ── Navegacion por pestañas ──────────────────────────────── -->
   <nav class="max-w-5xl mx-auto px-4 mt-4">
@@ -284,6 +340,8 @@
 
   </main>
 
+  </div><!-- /vista-app -->
+
   <!-- ── Modal de confirmacion (compartido) ──────────────────── -->
   <div id="modal-confirmacion" class="hidden fixed inset-0 z-50 items-center justify-center bg-black/50 px-4">
     <div class="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
@@ -307,6 +365,7 @@
 
   <script src="/js/api.js" defer></script>
   <script src="/js/ui.js" defer></script>
+  <script src="/js/auth.js" defer></script>
   <script src="/js/entregables.js" defer></script>
   <script src="/js/horarios.js" defer></script>
   <script src="/js/plan.js" defer></script>

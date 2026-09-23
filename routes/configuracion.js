@@ -1,10 +1,9 @@
 // ============================================================
 // routes/configuracion.js
-// Router para la fila única de "configuracion": límite diario de
-// estudio y ventana horaria (inicio/fin) que usa el algoritmo.
-// routes/plan.js lee esta tabla antes de llamar a
-// algoritmo/priorizar.js, así el usuario puede ajustarlo desde
-// el frontend en vez de tener valores fijos en el código.
+// Configuración del algoritmo DEL USUARIO DE LA SESIÓN: límite
+// diario de estudio y ventana horaria (inicio/fin). Cada usuario
+// tiene su propia fila en la tabla "configuracion".
+// routes/plan.js la lee antes de llamar a algoritmo/priorizar.js.
 // ============================================================
 
 const express = require('express');
@@ -29,13 +28,22 @@ function manejarErroresValidacion(req, res, next) {
   next();
 }
 
+// Devuelve la configuración del usuario; si su fila no existe (no
+// debería pasar: se crea al registrarse), la crea con los valores
+// por defecto de la tabla.
+function obtenerConfiguracion(usuarioId) {
+  db.prepare('INSERT OR IGNORE INTO configuracion (usuario_id) VALUES (?)').run(usuarioId);
+  return db.prepare('SELECT limite_horas_dia, ventana_inicio, ventana_fin FROM configuracion WHERE usuario_id = ?')
+    .get(usuarioId);
+}
+
 // ── GET /api/configuracion ───────────────────────────────────
 router.get('/', (req, res) => {
   try {
-    const configuracion = db.prepare('SELECT * FROM configuracion WHERE id = 1').get();
-    res.json(configuracion);
+    res.json(obtenerConfiguracion(req.session.usuarioId));
   } catch (err) {
-    res.status(500).json({ error: 'Error al obtener la configuración', detalle: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener la configuración' });
   }
 });
 
@@ -63,12 +71,11 @@ router.put(
     .withMessage('ventana_fin debe tener formato HH:MM (24 horas), ej. 22:00'),
 
   // Si vienen los dos en la misma petición, validamos el orden aquí.
-  // Si solo viene uno, se compara contra el valor ya guardado.
+  // Si solo viene uno, se compara contra el valor ya guardado del usuario.
   body('ventana_fin').custom((ventanaFin, { req }) => {
     if (!ventanaFin) return true;
 
-    const inicio = req.body.ventana_inicio
-      || db.prepare('SELECT ventana_inicio FROM configuracion WHERE id = 1').get().ventana_inicio;
+    const inicio = req.body.ventana_inicio || obtenerConfiguracion(req.session.usuarioId).ventana_inicio;
 
     if (ventanaFin <= inicio) {
       throw new Error('ventana_inicio debe ser anterior a ventana_fin');
@@ -79,24 +86,26 @@ router.put(
   manejarErroresValidacion,
   (req, res) => {
     const { limite_horas_dia, ventana_inicio, ventana_fin } = req.body;
+    const usuarioId = req.session.usuarioId;
 
     try {
+      obtenerConfiguracion(usuarioId); // asegura que la fila exista
+
       db.prepare(`
         UPDATE configuracion
         SET limite_horas_dia = COALESCE(?, limite_horas_dia),
             ventana_inicio   = COALESCE(?, ventana_inicio),
             ventana_fin      = COALESCE(?, ventana_fin)
-        WHERE id = 1
-      `).run(limite_horas_dia, ventana_inicio || null, ventana_fin || null);
-
-      const actualizada = db.prepare('SELECT * FROM configuracion WHERE id = 1').get();
+        WHERE usuario_id = ?
+      `).run(limite_horas_dia ?? null, ventana_inicio || null, ventana_fin || null, usuarioId);
 
       res.json({
         mensaje: 'Configuración actualizada correctamente',
-        configuracion: actualizada,
+        configuracion: obtenerConfiguracion(usuarioId),
       });
     } catch (err) {
-      res.status(500).json({ error: 'Error al actualizar la configuración', detalle: err.message });
+      console.error(err);
+      res.status(500).json({ error: 'Error al actualizar la configuración' });
     }
   }
 );

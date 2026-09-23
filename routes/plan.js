@@ -24,9 +24,16 @@ const { generarPlanEstudio } = require('../algoritmo/priorizar');
 // (ej. boton "Generar horario" en el frontend), no automatico.
 router.post('/generar', (req, res) => {
   try {
-    const entregables   = db.prepare('SELECT * FROM entregables').all();
-    const horariosFijos = db.prepare('SELECT * FROM horarios_fijos').all();
-    const configuracion = db.prepare('SELECT * FROM configuracion WHERE id = 1').get();
+    // Todo se lee y se escribe SOLO para el usuario de la sesión.
+    const usuarioId = req.session.usuarioId;
+
+    const entregables   = db.prepare('SELECT * FROM entregables WHERE usuario_id = ?').all(usuarioId);
+    const horariosFijos = db.prepare('SELECT * FROM horarios_fijos WHERE usuario_id = ?').all(usuarioId);
+
+    // Si por algún motivo su fila de configuración no existe, se crea
+    // con los valores por defecto de la tabla.
+    db.prepare('INSERT OR IGNORE INTO configuracion (usuario_id) VALUES (?)').run(usuarioId);
+    const configuracion = db.prepare('SELECT * FROM configuracion WHERE usuario_id = ?').get(usuarioId);
 
     // Los nombres de columnas (snake_case, como toda la BD) se
     // traducen aquí a los nombres que espera "opciones" en
@@ -47,7 +54,11 @@ router.post('/generar', (req, res) => {
     // operacion atomica: si algo falla a la mitad, no se queda
     // la base de datos con un horario a medio borrar.
     const regenerarHorario = db.transaction(() => {
-      db.prepare('DELETE FROM bloques_estudio').run();
+      // Solo se borran los bloques de los entregables de ESTE usuario.
+      db.prepare(`
+        DELETE FROM bloques_estudio
+        WHERE entregable_id IN (SELECT id FROM entregables WHERE usuario_id = ?)
+      `).run(usuarioId);
 
       const insertar = db.prepare(`
         INSERT INTO bloques_estudio (entregable_id, fecha, hora_inicio, hora_fin)
@@ -70,7 +81,8 @@ router.post('/generar', (req, res) => {
       avisos,
     });
   } catch (err) {
-    res.status(500).json({ error: 'Error al generar el horario de estudio', detalle: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Error al generar el horario de estudio' });
   }
 });
 
@@ -92,12 +104,14 @@ router.get('/', (req, res) => {
         entregables.tipo
       FROM bloques_estudio
       JOIN entregables ON entregables.id = bloques_estudio.entregable_id
+      WHERE entregables.usuario_id = ?
       ORDER BY bloques_estudio.fecha ASC, bloques_estudio.hora_inicio ASC
-    `).all();
+    `).all(req.session.usuarioId);
 
     res.json(bloques);
   } catch (err) {
-    res.status(500).json({ error: 'Error al obtener el horario de estudio', detalle: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener el horario de estudio' });
   }
 });
 

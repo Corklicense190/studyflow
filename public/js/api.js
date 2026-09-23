@@ -20,6 +20,14 @@ async function peticion(metodo, url, cuerpo) {
   // Algunas respuestas (ej. 204) no traen body; .json() tronaria.
   const datos = await respuesta.json().catch(() => ({}));
 
+  // 401 en cualquier ruta de DATOS = la sesión venció mientras la
+  // página seguía abierta: se vuelve a la pantalla de login. Las
+  // rutas /api/auth/ quedan fuera a propósito: ahí un 401 es
+  // "usuario o contraseña incorrectos" y se muestra en el formulario.
+  if (respuesta.status === 401 && !url.startsWith('/api/auth/')) {
+    manejarSesionExpirada();
+  }
+
   if (!respuesta.ok) {
     const error = new Error(datos.error || `Error ${respuesta.status}`);
     error.detalle = datos.detalle;
@@ -30,6 +38,12 @@ async function peticion(metodo, url, cuerpo) {
 }
 
 const api = {
+  auth: {
+    registro: (datos) => peticion('POST', '/api/auth/registro', datos),
+    login: (datos) => peticion('POST', '/api/auth/login', datos),
+    logout: () => peticion('POST', '/api/auth/logout'),
+    yo: () => peticion('GET', '/api/auth/me'),
+  },
   entregables: {
     listar: () => peticion('GET', '/api/entregables'),
     crear: (datos) => peticion('POST', '/api/entregables', datos),
