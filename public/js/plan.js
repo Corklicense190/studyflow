@@ -10,7 +10,7 @@
 // siendo útil aunque el plan abarque varias semanas.
 // ============================================================
 
-// Misma ventana horaria que algoritmo/priorizar.js (07:00-22:00).
+// horaAMinutosLocal replica lo que ya hace algoritmo/priorizar.js.
 // Se duplica aquí en JS de navegador porque ese módulo usa
 // module.exports (CommonJS) y no se puede cargar tal cual con un
 // <script> normal sin un bundler — para 2 funciones tan chicas no
@@ -20,9 +20,16 @@ function horaAMinutosLocal(hora) {
   return h * 60 + m;
 }
 
-const VENTANA_INICIO_MIN = horaAMinutosLocal('07:00');
-const VENTANA_FIN_MIN    = horaAMinutosLocal('22:00');
-const PX_POR_MINUTO      = 0.8;
+const PX_POR_MINUTO = 0.8;
+
+// La ventana horaria y el límite diario ya NO son fijos: se leen de
+// /api/configuracion (tabla "configuracion", ajustable desde este
+// mismo formulario). Estos valores por defecto solo se usan un
+// instante antes de que cargarPlan() traiga los reales.
+let configuracionActual = { limite_horas_dia: 4, ventana_inicio: '07:00', ventana_fin: '22:00' };
+
+function ventanaInicioMin() { return horaAMinutosLocal(configuracionActual.ventana_inicio); }
+function ventanaFinMin()    { return horaAMinutosLocal(configuracionActual.ventana_fin); }
 
 const DIAS_SEMANA_LOCAL = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 
@@ -59,16 +66,48 @@ function generarRangoFechas(desde, hasta) {
 
 let horariosParaCalendario = [];
 
+function llenarFormularioConfiguracion(config) {
+  document.getElementById('config-limite').value = config.limite_horas_dia;
+  document.getElementById('config-ventana-inicio').value = config.ventana_inicio;
+  document.getElementById('config-ventana-fin').value = config.ventana_fin;
+}
+
 async function cargarPlan() {
   try {
-    const [bloques, horarios] = await Promise.all([
+    // La configuración se carga junto con el plan porque el
+    // calendario necesita conocer la ventana horaria REAL antes de
+    // dibujar la cuadrícula (si no, dibujaría siempre 07:00-22:00
+    // sin importar lo que el usuario haya guardado).
+    const [bloques, horarios, config] = await Promise.all([
       api.plan.obtener(),
       api.horarios.listar(),
+      api.configuracion.obtener(),
     ]);
     horariosParaCalendario = horarios;
+    configuracionActual = config;
+    llenarFormularioConfiguracion(config);
     renderizarCalendario(bloques);
   } catch (error) {
     mostrarToast('error', `No se pudo cargar el plan: ${error.message}`);
+  }
+}
+
+async function manejarSubmitConfiguracion(evento) {
+  evento.preventDefault();
+  limpiarErroresFormulario('configuracion-error');
+
+  const datos = {
+    limite_horas_dia: Number(document.getElementById('config-limite').value),
+    ventana_inicio: document.getElementById('config-ventana-inicio').value,
+    ventana_fin: document.getElementById('config-ventana-fin').value,
+  };
+
+  try {
+    const resultado = await api.configuracion.actualizar(datos);
+    configuracionActual = resultado.configuracion;
+    mostrarToast('exito', 'Configuración guardada — se aplicará la próxima vez que generes el horario');
+  } catch (error) {
+    mostrarErroresFormulario('configuracion-error', error);
   }
 }
 
@@ -82,7 +121,7 @@ async function cargarPlan() {
 function bloqueHtml(horaInicio, horaFin, etiqueta, clasesColor) {
   const inicioMin = horaAMinutosLocal(horaInicio);
   const finMin = horaAMinutosLocal(horaFin);
-  const top = (inicioMin - VENTANA_INICIO_MIN) * PX_POR_MINUTO;
+  const top = (inicioMin - ventanaInicioMin()) * PX_POR_MINUTO;
   const alto = (finMin - inicioMin) * PX_POR_MINUTO;
 
   return `
@@ -108,7 +147,9 @@ function renderizarCalendario(bloques) {
 
   const fechas = bloques.map(b => b.fecha).sort();
   const dias = generarRangoFechas(fechas[0], fechas[fechas.length - 1]);
-  const alturaTotal = (VENTANA_FIN_MIN - VENTANA_INICIO_MIN) * PX_POR_MINUTO;
+  const inicioMin = ventanaInicioMin();
+  const finMin = ventanaFinMin();
+  const alturaTotal = (finMin - inicioMin) * PX_POR_MINUTO;
 
   let html = `
     <div class="flex items-center gap-4 text-xs text-gray-600 mb-3">
@@ -120,10 +161,11 @@ function renderizarCalendario(bloques) {
     <div class="calendario-grid" style="--dias:${dias.length}">
   `;
 
-  // Columna de etiquetas de hora (cada hora en punto, de 07:00 a 22:00).
+  // Columna de etiquetas de hora (cada hora en punto, según la
+  // ventana configurada — ya no es un rango fijo).
   html += `<div class="relative" style="height:${alturaTotal}px">`;
-  for (let min = VENTANA_INICIO_MIN; min <= VENTANA_FIN_MIN; min += 60) {
-    const top = (min - VENTANA_INICIO_MIN) * PX_POR_MINUTO;
+  for (let min = inicioMin; min <= finMin; min += 60) {
+    const top = (min - inicioMin) * PX_POR_MINUTO;
     const hh = String(Math.floor(min / 60)).padStart(2, '0');
     html += `<div class="absolute text-[10px] text-gray-400 -translate-y-1/2" style="top:${top}px">${hh}:00</div>`;
   }
@@ -139,8 +181,8 @@ function renderizarCalendario(bloques) {
       <div class="text-xs font-medium text-gray-700 text-center pb-1 border-b border-gray-200">${formatearEncabezadoDia(fecha)}</div>
       <div class="calendario-columna-dia" style="height:${alturaTotal}px">`;
 
-    for (let min = VENTANA_INICIO_MIN; min <= VENTANA_FIN_MIN; min += 60) {
-      const top = (min - VENTANA_INICIO_MIN) * PX_POR_MINUTO;
+    for (let min = inicioMin; min <= finMin; min += 60) {
+      const top = (min - inicioMin) * PX_POR_MINUTO;
       html += `<div class="calendario-linea-hora" style="top:${top}px"></div>`;
     }
 
@@ -200,5 +242,6 @@ async function manejarGenerarPlan() {
 
 function inicializarPlan() {
   document.getElementById('plan-generar').addEventListener('click', manejarGenerarPlan);
+  document.getElementById('form-configuracion').addEventListener('submit', manejarSubmitConfiguracion);
   cargarPlan();
 }

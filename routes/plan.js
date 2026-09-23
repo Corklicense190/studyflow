@@ -26,10 +26,22 @@ router.post('/generar', (req, res) => {
   try {
     const entregables   = db.prepare('SELECT * FROM entregables').all();
     const horariosFijos = db.prepare('SELECT * FROM horarios_fijos').all();
+    const configuracion = db.prepare('SELECT * FROM configuracion WHERE id = 1').get();
+
+    // Los nombres de columnas (snake_case, como toda la BD) se
+    // traducen aquí a los nombres que espera "opciones" en
+    // algoritmo/priorizar.js (camelCase). Si por algún motivo no
+    // hubiera fila de configuración, generarPlanEstudio usa sus
+    // propios valores por defecto (undefined simplemente no pisa nada).
+    const opciones = configuracion && {
+      limiteHorasPorDia: configuracion.limite_horas_dia,
+      ventanaInicio: configuracion.ventana_inicio,
+      ventanaFin: configuracion.ventana_fin,
+    };
 
     // bloquesExistentes = [] porque este endpoint SIEMPRE hace
     // recalculo total: no importa lo que ya estuviera agendado.
-    const { bloques, avisos } = generarPlanEstudio(entregables, horariosFijos, []);
+    const { bloques, avisos } = generarPlanEstudio(entregables, horariosFijos, [], opciones);
 
     // db.transaction agrupa el DELETE + los INSERT en una sola
     // operacion atomica: si algo falla a la mitad, no se queda

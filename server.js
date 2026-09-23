@@ -17,6 +17,7 @@ const helmet       = require('helmet');
 const entregables  = require('./routes/entregables');
 const horarios     = require('./routes/horarios');
 const plan         = require('./routes/plan');
+const configuracion = require('./routes/configuracion');
 
 // Creamos la instancia principal de Express.
 const app  = express();
@@ -63,6 +64,11 @@ app.use('/api/horarios-fijos', horarios);
 // horario de estudio calculado por el algoritmo).
 app.use('/api/plan', plan);
 
+// Cualquier petición que empiece con /api/configuracion la maneja
+// el router definido en routes/configuracion.js (límite diario y
+// ventana horaria que usa el algoritmo).
+app.use('/api/configuracion', configuracion);
+
 // ── Ruta de verificación de la API ────────────────────────────
 // "/" ahora la sirve el frontend estatico (public/index.html).
 // Esta ruta queda para confirmar rápidamente que el servidor y
@@ -96,4 +102,6 @@ app.listen(PORT, () => {
   console.log('   DELETE /api/horarios-fijos/:id');
   console.log('   POST   /api/plan/generar');
   console.log('   GET    /api/plan');
+  console.log('   GET    /api/configuracion');
+  console.log('   PUT    /api/configuracion');
 });
