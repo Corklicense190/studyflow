@@ -7,7 +7,23 @@
 
 let entregablesCache = [];
 
-const TIPO_ETIQUETA = { examen: 'Examen', evidencia: 'Evidencia' };
+const TIPO_ETIQUETA = { examen: 'Examen', evidencia: 'Evidencia', tarea: 'Tarea' };
+
+// Mismos tipos que TIPOS_CON_DIFICULTAD_AUTOMATICA en
+// routes/entregables.js — ahí es donde de verdad se fuerza el
+// valor; aquí solo se refleja en la interfaz para no preguntar
+// algo que el servidor va a ignorar de todas formas.
+const TIPOS_CON_DIFICULTAD_AUTOMATICA = ['examen', 'evidencia'];
+
+// Muestra el campo de dificultad solo para "tarea"; para
+// examen/evidencia enseña la notita de "automático: 5" en su lugar.
+function actualizarVisibilidadDificultad() {
+  const tipo = document.getElementById('entregable-tipo').value;
+  const esAutomatica = TIPOS_CON_DIFICULTAD_AUTOMATICA.includes(tipo);
+
+  document.getElementById('entregable-dificultad-campo').classList.toggle('hidden', esAutomatica);
+  document.getElementById('entregable-dificultad-nota').classList.toggle('hidden', !esAutomatica);
+}
 
 // La BD guarda fecha_limite como ISO completo ("2026-03-05T00:00:00.000Z").
 // Para mostrar solo nos importan los primeros 10 caracteres.
@@ -62,6 +78,7 @@ function llenarFormularioEntregable(entregable) {
   document.getElementById('entregable-fecha').value = entregable.fecha_limite.slice(0, 10);
   document.getElementById('entregable-dificultad').value = entregable.dificultad;
   document.getElementById('entregable-duracion').value = entregable.duracion_estimada;
+  actualizarVisibilidadDificultad();
 
   document.getElementById('entregables-form-titulo').textContent = 'Editar entregable';
   document.getElementById('entregable-submit').textContent = 'Guardar cambios';
@@ -75,6 +92,7 @@ function limpiarFormularioEntregable() {
   document.getElementById('entregable-submit').textContent = 'Agregar';
   document.getElementById('entregable-cancelar-edicion').classList.add('hidden');
   limpiarErroresFormulario('entregables-form-error');
+  actualizarVisibilidadDificultad();
 }
 
 async function manejarSubmitEntregable(evento) {
@@ -82,13 +100,21 @@ async function manejarSubmitEntregable(evento) {
   limpiarErroresFormulario('entregables-form-error');
 
   const id = document.getElementById('entregable-id').value;
+  const tipo = document.getElementById('entregable-tipo').value;
+
   const datos = {
     materia: document.getElementById('entregable-materia').value,
-    tipo: document.getElementById('entregable-tipo').value,
+    tipo,
     fecha_limite: document.getElementById('entregable-fecha').value,
-    dificultad: Number(document.getElementById('entregable-dificultad').value),
     duracion_estimada: Number(document.getElementById('entregable-duracion').value),
   };
+
+  // Solo se manda dificultad cuando de verdad la elige el usuario
+  // ("tarea"). Para examen/evidencia el servidor la fuerza a 5 sin
+  // importar qué se mande, así que ni se molesta en enviarla.
+  if (!TIPOS_CON_DIFICULTAD_AUTOMATICA.includes(tipo)) {
+    datos.dificultad = Number(document.getElementById('entregable-dificultad').value);
+  }
 
   try {
     if (id) {
@@ -140,5 +166,7 @@ function inicializarEntregables() {
   document.getElementById('form-entregable').addEventListener('submit', manejarSubmitEntregable);
   document.getElementById('entregable-cancelar-edicion').addEventListener('click', limpiarFormularioEntregable);
   document.getElementById('entregables-lista').addEventListener('click', manejarClicListaEntregables);
+  document.getElementById('entregable-tipo').addEventListener('change', actualizarVisibilidadDificultad);
+  actualizarVisibilidadDificultad(); // estado inicial acorde al tipo por defecto
   cargarEntregables();
 }

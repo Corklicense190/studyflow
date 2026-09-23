@@ -59,6 +59,7 @@
               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="examen">Examen</option>
               <option value="evidencia">Evidencia</option>
+              <option value="tarea">Tarea</option>
             </select>
           </div>
 
@@ -68,9 +69,12 @@
               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
-          <div>
+          <!-- Solo aplica a "tarea": examen/evidencia siempre valen
+               dificultad 5 automático (regla de negocio confirmada
+               con el usuario), así que ni se les pregunta. -->
+          <div id="entregable-dificultad-campo">
             <label for="entregable-dificultad" class="block text-sm font-medium text-gray-700 mb-1">Dificultad (1-5)</label>
-            <select id="entregable-dificultad" required
+            <select id="entregable-dificultad"
               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="1">1 — muy fácil</option>
               <option value="2">2</option>
@@ -78,6 +82,9 @@
               <option value="4">4</option>
               <option value="5">5 — muy difícil</option>
             </select>
+          </div>
+          <div id="entregable-dificultad-nota" class="hidden flex items-end">
+            <p class="text-sm text-gray-500 pb-2">Dificultad automática: <strong>5</strong> (fijo para exámenes y evidencias).</p>
           </div>
 
           <div>

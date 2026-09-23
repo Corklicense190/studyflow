@@ -20,11 +20,17 @@ const { body, param, validationResult } = require('express-validator');
 // Reutilizamos la conexión ya abierta en db/database.js.
 const db = require('../db/database');
 
-// Mismos valores que el CHECK constraint de la tabla en
-// db/database.js. Si un "tipo" no está aquí, SQLite lo hubiera
-// rechazado de todas formas, pero validarlo antes evita gastar
-// una consulta y da un mensaje de error más claro al usuario.
-const TIPOS_VALIDOS = ['examen', 'evidencia'];
+// "tipo" no tiene CHECK a nivel de base de datos (db/database.js);
+// esta lista es la única fuente de verdad de qué valores se aceptan.
+//
+// Regla de negocio (confirmada con el usuario): "examen" y
+// "evidencia" siempre valen dificultad 5 automático — el profesor
+// las califica igual de exigentes sin importar el tema. Solo
+// "tarea" deja que el usuario elija la dificultad (1-5), porque
+// varía mucho de una tarea a otra.
+const TIPOS_VALIDOS = ['examen', 'evidencia', 'tarea'];
+const DIFICULTAD_AUTOMATICA = 5;
+const TIPOS_CON_DIFICULTAD_AUTOMATICA = ['examen', 'evidencia'];
 
 // ── Middleware de manejo de errores de validación ────────────
 // Se coloca al final de cada cadena de validaciones. Si alguna
@@ -72,10 +78,26 @@ function reglasEntregable(esOpcional) {
       .bail()
       .toDate(),
 
+    // Si viene dificultad, siempre se valida el rango (sin importar
+    // el tipo) — el valor real que se guarda se decide después en
+    // el handler de la ruta (ver DIFICULTAD_AUTOMATICA más abajo).
     envoltura(body('dificultad'))
       .isInt({ min: 1, max: 5 })
       .withMessage('dificultad debe ser un entero entre 1 y 5')
       .toInt(),
+
+    // Solo al CREAR (esOpcional === false) se exige dificultad para
+    // "tarea": en PUT, si no se manda, simplemente se conserva la
+    // que ya tenía (mismo criterio que cualquier otro campo opcional).
+    body('dificultad').custom((dificultad, { req }) => {
+      const esTarea = req.body.tipo === 'tarea';
+      const faltaDificultad = dificultad === undefined || dificultad === null || dificultad === '';
+
+      if (!esOpcional && esTarea && faltaDificultad) {
+        throw new Error('dificultad es obligatoria para entregables de tipo "tarea"');
+      }
+      return true;
+    }),
 
     envoltura(body('duracion_estimada'))
       .isInt({ min: 1 })
@@ -93,6 +115,13 @@ router.post(
   (req, res) => {
     const { materia, tipo, fecha_limite, dificultad, duracion_estimada } = req.body;
 
+    // "examen" y "evidencia" siempre son dificultad 5 automático,
+    // sin importar qué haya mandado el cliente; solo "tarea" respeta
+    // el valor que el usuario eligió.
+    const dificultadFinal = TIPOS_CON_DIFICULTAD_AUTOMATICA.includes(tipo)
+      ? DIFICULTAD_AUTOMATICA
+      : dificultad;
+
     try {
       const stmt = db.prepare(`
         INSERT INTO entregables (materia, tipo, fecha_limite, dificultad, duracion_estimada)
@@ -105,7 +134,7 @@ router.post(
         materia,
         tipo,
         new Date(fecha_limite).toISOString(),
-        dificultad,
+        dificultadFinal,
         duracion_estimada
       );
 
@@ -146,11 +175,19 @@ router.put(
     const { materia, tipo, fecha_limite, dificultad, duracion_estimada } = req.body;
 
     try {
-      const existente = db.prepare('SELECT id FROM entregables WHERE id = ?').get(id);
+      const existente = db.prepare('SELECT tipo FROM entregables WHERE id = ?').get(id);
 
       if (!existente) {
         return res.status(404).json({ error: `No existe el entregable con id ${id}` });
       }
+
+      // El tipo "efectivo" es el nuevo si lo están cambiando, o el
+      // que ya tenía si no vino en el body. Con eso decidimos si la
+      // dificultad se fuerza a automática o se respeta la enviada.
+      const tipoEfectivo = tipo || existente.tipo;
+      const dificultadFinal = TIPOS_CON_DIFICULTAD_AUTOMATICA.includes(tipoEfectivo)
+        ? DIFICULTAD_AUTOMATICA
+        : (dificultad ?? null); // null -> COALESCE conserva la que ya tenía
 
       const stmt = db.prepare(`
         UPDATE entregables
@@ -166,7 +203,7 @@ router.put(
         materia,
         tipo,
         fecha_limite ? new Date(fecha_limite).toISOString() : null,
-        dificultad,
+        dificultadFinal,
         duracion_estimada,
         id
       );
