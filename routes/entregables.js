@@ -81,7 +81,11 @@ function reglasEntregable(esOpcional) {
     // Si viene dificultad, siempre se valida el rango (sin importar
     // el tipo) — el valor real que se guarda se decide después en
     // el handler de la ruta (ver DIFICULTAD_AUTOMATICA más abajo).
-    envoltura(body('dificultad'))
+    // Es OPCIONAL a propósito, también al crear: para examen y
+    // evidencia el frontend no la manda (es automática). Que sea
+    // obligatoria para "tarea" lo exige la regla de abajo.
+    body('dificultad')
+      .optional({ values: 'null' })
       .isInt({ min: 1, max: 5 })
       .withMessage('dificultad debe ser un entero entre 1 y 5')
       .toInt(),
@@ -124,13 +128,16 @@ router.post(
 
     try {
       const stmt = db.prepare(`
-        INSERT INTO entregables (materia, tipo, fecha_limite, dificultad, duracion_estimada)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO entregables (usuario_id, materia, tipo, fecha_limite, dificultad, duracion_estimada)
+        VALUES (?, ?, ?, ?, ?, ?)
       `);
 
       // fecha_limite ya viene convertida a Date por .toDate(); la
       // guardamos como ISO string para mantener el formato de la tabla.
+      // usuario_id sale de la SESIÓN, nunca del body: el cliente no
+      // puede crear datos a nombre de otro usuario.
       const resultado = stmt.run(
+        req.session.usuarioId,
         materia,
         tipo,
         new Date(fecha_limite).toISOString(),
@@ -143,7 +150,8 @@ router.post(
         id: resultado.lastInsertRowid
       });
     } catch (err) {
-      res.status(500).json({ error: 'Error al crear el entregable', detalle: err.message });
+      console.error(err);
+      res.status(500).json({ error: 'Error al crear el entregable' });
     }
   }
 );
@@ -153,13 +161,18 @@ router.post(
 // (los más urgentes primero).
 router.get('/', (req, res) => {
   try {
+    // Solo los del usuario de la sesión.
     const entregables = db.prepare(`
-      SELECT * FROM entregables ORDER BY fecha_limite ASC
-    `).all();
+      SELECT id, materia, tipo, fecha_limite, dificultad, duracion_estimada, creado_en
+      FROM entregables
+      WHERE usuario_id = ?
+      ORDER BY fecha_limite ASC
+    `).all(req.session.usuarioId);
 
     res.json(entregables);
   } catch (err) {
-    res.status(500).json({ error: 'Error al obtener los entregables', detalle: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener los entregables' });
   }
 });
 
@@ -175,7 +188,11 @@ router.put(
     const { materia, tipo, fecha_limite, dificultad, duracion_estimada } = req.body;
 
     try {
-      const existente = db.prepare('SELECT tipo FROM entregables WHERE id = ?').get(id);
+      // El "AND usuario_id = ?" es lo que impide que un usuario edite
+      // el entregable de otro adivinando su id (IDOR). Si el id existe
+      // pero es de otro usuario, se responde 404 igual que si no existiera.
+      const existente = db.prepare('SELECT tipo FROM entregables WHERE id = ? AND usuario_id = ?')
+        .get(id, req.session.usuarioId);
 
       if (!existente) {
         return res.status(404).json({ error: `No existe el entregable con id ${id}` });
@@ -196,7 +213,7 @@ router.put(
             fecha_limite      = COALESCE(?, fecha_limite),
             dificultad        = COALESCE(?, dificultad),
             duracion_estimada = COALESCE(?, duracion_estimada)
-        WHERE id = ?
+        WHERE id = ? AND usuario_id = ?
       `);
 
       stmt.run(
@@ -205,12 +222,14 @@ router.put(
         fecha_limite ? new Date(fecha_limite).toISOString() : null,
         dificultadFinal,
         duracion_estimada,
-        id
+        id,
+        req.session.usuarioId
       );
 
       res.json({ mensaje: `Entregable ${id} actualizado correctamente` });
     } catch (err) {
-      res.status(500).json({ error: 'Error al actualizar el entregable', detalle: err.message });
+      console.error(err);
+      res.status(500).json({ error: 'Error al actualizar el entregable' });
     }
   }
 );
@@ -227,17 +246,19 @@ router.delete(
     const { id } = req.params;
 
     try {
-      const existente = db.prepare('SELECT id FROM entregables WHERE id = ?').get(id);
+      const existente = db.prepare('SELECT id FROM entregables WHERE id = ? AND usuario_id = ?')
+        .get(id, req.session.usuarioId);
 
       if (!existente) {
         return res.status(404).json({ error: `No existe el entregable con id ${id}` });
       }
 
-      db.prepare('DELETE FROM entregables WHERE id = ?').run(id);
+      db.prepare('DELETE FROM entregables WHERE id = ? AND usuario_id = ?').run(id, req.session.usuarioId);
 
       res.json({ mensaje: `Entregable ${id} eliminado correctamente` });
     } catch (err) {
-      res.status(500).json({ error: 'Error al eliminar el entregable', detalle: err.message });
+      console.error(err);
+      res.status(500).json({ error: 'Error al eliminar el entregable' });
     }
   }
 );

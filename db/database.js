@@ -1,8 +1,14 @@
-﻿// ============================================================
+// ============================================================
 // db/database.js
 // Responsabilidad: abrir (o crear) la base de datos SQLite y
-// asegurarse de que las tres tablas existan antes de que
-// cualquier ruta intente usarlas.
+// asegurarse de que las tablas existan antes de que cualquier
+// ruta intente usarlas.
+//
+// Desde que se agregó autenticación, TODOS los datos de la app
+// pertenecen a un usuario (columna usuario_id). Las rutas siempre
+// filtran por el usuario de la sesión, así que un usuario nunca
+// puede ver ni tocar los entregables, horarios o configuración
+// de otro.
 // ============================================================
 
 // better-sqlite3 funciona de forma SÍNCRONA, lo que simplifica
@@ -11,7 +17,9 @@ const Database = require('better-sqlite3');
 const path     = require('path');
 
 // Ruta absoluta al archivo .db (queda en la raíz del proyecto).
-const dbPath = path.join(__dirname, '..', 'studyflow.db');
+// DB_PATH permite usar otra (las pruebas automáticas usan ':memory:'
+// para no tocar la base de datos real).
+const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'studyflow.db');
 
 // Abrimos o creamos la base de datos.
 const db = new Database(dbPath);
@@ -19,11 +27,41 @@ const db = new Database(dbPath);
 // Activar claves foráneas (SQLite las desactiva por defecto).
 db.pragma('foreign_keys = ON');
 
+// ── Detección del esquema viejo (anterior a la autenticación) ──
+// CREATE TABLE IF NOT EXISTS no modifica tablas que ya existen, así
+// que una studyflow.db creada antes de la autenticación se quedaría
+// sin la columna usuario_id y todo fallaría con errores confusos.
+// Mejor detenerse aquí con un mensaje claro.
+const tablaVieja = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'entregables'").get();
+if (tablaVieja) {
+  const columnas = db.prepare('PRAGMA table_info(entregables)').all().map(c => c.name);
+  if (!columnas.includes('usuario_id')) {
+    throw new Error(
+      'La base de datos studyflow.db tiene el esquema anterior a la autenticación (sin usuario_id). ' +
+      'Borra el archivo studyflow.db y vuelve a arrancar: se recreará con el esquema nuevo.'
+    );
+  }
+}
+
+// ── Tabla 0: usuarios ────────────────────────────────────────
+// La contraseña NUNCA se guarda: solo su hash bcrypt (con sal
+// incluida). nombre_usuario es único sin distinguir mayúsculas.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS usuarios (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre_usuario  TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    password_hash   TEXT    NOT NULL,
+    creado_en       TEXT    DEFAULT (datetime('now'))
+  );
+`);
+
 // ── Tabla 1: entregables ─────────────────────────────────────
-// Guarda tareas, exámenes y proyectos pendientes del alumno.
+// Guarda tareas, exámenes y evidencias pendientes del alumno.
+// ON DELETE CASCADE: si se borra el usuario, se van sus datos.
 db.exec(`
   CREATE TABLE IF NOT EXISTS entregables (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id        INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
     materia           TEXT    NOT NULL,
     tipo              TEXT    NOT NULL,
     fecha_limite      TEXT    NOT NULL,
@@ -39,6 +77,7 @@ db.exec(`
 db.exec(`
   CREATE TABLE IF NOT EXISTS horarios_fijos (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
     dia_semana  TEXT NOT NULL CHECK(dia_semana IN (
                   'lunes','martes','miercoles','jueves',
                   'viernes','sabado','domingo'
@@ -51,6 +90,7 @@ db.exec(`
 
 // ── Tabla 3: bloques_estudio ─────────────────────────────────
 // Bloques de tiempo que el algoritmo asigna a cada entregable.
+// No lleva usuario_id propio: su dueño es el de su entregable.
 db.exec(`
   CREATE TABLE IF NOT EXISTS bloques_estudio (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,28 +103,30 @@ db.exec(`
 `);
 
 // ── Tabla 4: configuracion ───────────────────────────────────
-// Una sola fila (forzado con CHECK(id = 1)) que guarda los
-// parámetros del algoritmo que el usuario puede ajustar: límite
-// de horas de estudio por día y la ventana horaria del día en la
-// que se puede estudiar. Antes vivían como constantes fijas
-// dentro de algoritmo/priorizar.js; ahora ese módulo sigue
-// teniéndolas como valores por defecto, pero routes/plan.js lee
-// esta tabla y se las manda como "opciones" en cada generación.
+// Una fila POR USUARIO con los parámetros del algoritmo que puede
+// ajustar: límite de horas de estudio por día y ventana horaria.
+// Los DEFAULT son los valores confirmados originalmente (4h, 07:00-22:00);
+// la fila se crea con esos valores al registrarse o la primera vez
+// que se consulta.
 db.exec(`
   CREATE TABLE IF NOT EXISTS configuracion (
-    id                INTEGER PRIMARY KEY CHECK (id = 1),
+    usuario_id        INTEGER PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
     limite_horas_dia  INTEGER NOT NULL DEFAULT 4,
     ventana_inicio    TEXT    NOT NULL DEFAULT '07:00',
     ventana_fin       TEXT    NOT NULL DEFAULT '22:00'
   );
 `);
 
-// Nos aseguramos de que la fila única exista desde el arranque,
-// así routes/configuracion.js siempre puede hacer UPDATE directo
-// sin preguntarse primero si ya hay algo que actualizar.
+// ── Tabla 5: sesiones ────────────────────────────────────────
+// Sesiones del servidor (express-session). En el navegador solo
+// viaja un identificador aleatorio en una cookie httpOnly; lo demás
+// (quién eres) vive aquí. Ver db/almacen-sesiones.js.
 db.exec(`
-  INSERT OR IGNORE INTO configuracion (id, limite_horas_dia, ventana_inicio, ventana_fin)
-  VALUES (1, 4, '07:00', '22:00');
+  CREATE TABLE IF NOT EXISTS sesiones (
+    sid     TEXT    PRIMARY KEY,
+    datos   TEXT    NOT NULL,
+    expira  INTEGER NOT NULL
+  );
 `);
 
 // Exportamos la conexión para que los routers la reutilicen.
