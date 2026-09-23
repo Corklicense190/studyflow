@@ -67,17 +67,24 @@ async function cargarPlan() {
 }
 
 // Un solo bloque posicionado dentro de su columna de día, usando
-// top/height en px calculados a partir de la hora exacta.
-// "etiqueta" (materia o descripcion) ya viene escapada por el
-// servidor — segura tanto en el contenido del div como en el
-// atributo title.
+// top/height en px calculados a partir de la hora exacta. Muestra
+// la etiqueta (materia o descripcion) arriba y el rango de horas
+// pegado abajo a la derecha, pedido explícitamente para poder ver
+// de un vistazo cuánto dura cada bloque sin tener que pasar el mouse.
+// "etiqueta" ya viene escapada por el servidor — segura tanto en
+// el contenido del div como en el atributo title.
 function bloqueHtml(horaInicio, horaFin, etiqueta, clasesColor) {
   const inicioMin = horaAMinutosLocal(horaInicio);
   const finMin = horaAMinutosLocal(horaFin);
   const top = (inicioMin - VENTANA_INICIO_MIN) * PX_POR_MINUTO;
   const alto = (finMin - inicioMin) * PX_POR_MINUTO;
 
-  return `<div class="calendario-bloque ${clasesColor}" style="top:${top}px;height:${alto}px" title="${etiqueta}">${etiqueta}</div>`;
+  return `
+    <div class="calendario-bloque ${clasesColor}" style="top:${top}px;height:${alto}px" title="${etiqueta} (${horaInicio}-${horaFin})">
+      <span>${etiqueta}</span>
+      <span class="calendario-bloque-horas">${horaInicio}-${horaFin}</span>
+    </div>
+  `;
 }
 
 function renderizarCalendario(bloques) {
