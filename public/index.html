@@ -8,13 +8,33 @@
        Nada de scripts externos: mantiene el CSP estricto de Helmet
        sin tener que abrir excepciones. -->
   <link rel="stylesheet" href="/css/tailwind.css" />
+  <!-- Sin defer a propósito: aplica el tema guardado antes del primer
+       pintado para evitar un parpadeo (ver public/js/tema.js). -->
+  <script src="/js/tema.js"></script>
 </head>
 <body class="bg-gray-50 min-h-screen text-gray-900">
 
   <header class="bg-white border-b border-gray-200">
-    <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-      <h1 class="text-xl font-bold">StudyFlow</h1>
-      <p class="text-sm text-gray-500">Optimizador de horarios de estudio</p>
+    <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-3 flex-wrap">
+      <div>
+        <h1 class="text-xl font-bold">StudyFlow</h1>
+        <p class="hidden sm:block text-xs text-gray-500">Optimizador de horarios de estudio</p>
+      </div>
+
+      <!-- Controles de tema: cuatro acentos pastel + modo claro/oscuro.
+           La lógica vive en public/js/tema.js. -->
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2" role="group" aria-label="Color del tema">
+          <button type="button" class="tema-muestra" data-tema-btn="cielo" title="Tema cielo" aria-label="Tema cielo" aria-pressed="false"></button>
+          <button type="button" class="tema-muestra" data-tema-btn="lavanda" title="Tema lavanda" aria-label="Tema lavanda" aria-pressed="false"></button>
+          <button type="button" class="tema-muestra" data-tema-btn="menta" title="Tema menta" aria-label="Tema menta" aria-pressed="false"></button>
+          <button type="button" class="tema-muestra" data-tema-btn="durazno" title="Tema durazno" aria-label="Tema durazno" aria-pressed="false"></button>
+        </div>
+        <button type="button" id="boton-modo"
+          class="rounded-md border border-gray-300 text-sm font-medium px-3 py-1.5 hover:bg-gray-50">
+          Modo oscuro
+        </button>
+      </div>
     </div>
   </header>
 
