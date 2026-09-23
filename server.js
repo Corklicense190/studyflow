@@ -14,6 +14,7 @@ require('dotenv').config();
 const express      = require('express');
 const entregables  = require('./routes/entregables');
 const horarios     = require('./routes/horarios');
+const plan         = require('./routes/plan');
 
 // Creamos la instancia principal de Express.
 const app  = express();
@@ -37,6 +38,11 @@ app.use('/api/entregables', entregables);
 // Cualquier petición que empiece con /api/horarios-fijos la
 // maneja el router definido en routes/horarios.js.
 app.use('/api/horarios-fijos', horarios);
+
+// Cualquier petición que empiece con /api/plan la maneja el
+// router definido en routes/plan.js (genera y consulta el
+// horario de estudio calculado por el algoritmo).
+app.use('/api/plan', plan);
 
 // ── Ruta raíz de verificación ────────────────────────────────
 // Sirve para confirmar rápidamente que el servidor está vivo
@@ -65,4 +71,6 @@ app.listen(PORT, () => {
   console.log('   DELETE /api/entregables/:id');
   console.log('   POST   /api/horarios-fijos');
   console.log('   GET    /api/horarios-fijos');
+  console.log('   POST   /api/plan/generar');
+  console.log('   GET    /api/plan');
 });
