@@ -46,4 +46,8 @@ const api = {
     generar: () => peticion('POST', '/api/plan/generar'),
     obtener: () => peticion('GET', '/api/plan'),
   },
+  configuracion: {
+    obtener: () => peticion('GET', '/api/configuracion'),
+    actualizar: (datos) => peticion('PUT', '/api/configuracion', datos),
+  },
 };

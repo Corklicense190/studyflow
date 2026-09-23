@@ -62,5 +62,30 @@ db.exec(`
   );
 `);
 
+// ── Tabla 4: configuracion ───────────────────────────────────
+// Una sola fila (forzado con CHECK(id = 1)) que guarda los
+// parámetros del algoritmo que el usuario puede ajustar: límite
+// de horas de estudio por día y la ventana horaria del día en la
+// que se puede estudiar. Antes vivían como constantes fijas
+// dentro de algoritmo/priorizar.js; ahora ese módulo sigue
+// teniéndolas como valores por defecto, pero routes/plan.js lee
+// esta tabla y se las manda como "opciones" en cada generación.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS configuracion (
+    id                INTEGER PRIMARY KEY CHECK (id = 1),
+    limite_horas_dia  INTEGER NOT NULL DEFAULT 4,
+    ventana_inicio    TEXT    NOT NULL DEFAULT '07:00',
+    ventana_fin       TEXT    NOT NULL DEFAULT '22:00'
+  );
+`);
+
+// Nos aseguramos de que la fila única exista desde el arranque,
+// así routes/configuracion.js siempre puede hacer UPDATE directo
+// sin preguntarse primero si ya hay algo que actualizar.
+db.exec(`
+  INSERT OR IGNORE INTO configuracion (id, limite_horas_dia, ventana_inicio, ventana_fin)
+  VALUES (1, 4, '07:00', '22:00');
+`);
+
 // Exportamos la conexión para que los routers la reutilicen.
 module.exports = db;
