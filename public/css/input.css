@@ -14,6 +14,128 @@
 
 @import "tailwindcss";
 
+/* ============================================================
+   TEMAS: modo claro/oscuro + acento pastel a elegir
+   ------------------------------------------------------------
+   El HTML y el JS ya usaban clases de color de Tailwind
+   (bg-white, text-gray-500, bg-blue-600...). En vez de reescribir
+   todo con variantes dark:, aqui esas MISMAS clases se re-mapean a
+   variables CSS. Como estas reglas van SIN @layer, le ganan a las
+   utilidades de Tailwind (que viven dentro de @layer utilities)
+   sin importar la especificidad. Cambiar de tema = cambiar dos
+   atributos en <html> (data-modo y data-tema); public/js/tema.js
+   los pone. Todo es CSS estatico: no hace falta relajar el CSP.
+   ============================================================ */
+
+/* Modo claro (base). */
+:root {
+  --fondo: #eef4ff;
+  --superficie: #ffffff;
+  --superficie-hover: var(--fondo);
+  --campo: #ffffff;
+  --texto: #111827;
+  --texto-2: #374151;
+  --texto-3: #6b7280;
+  --borde: #e5e7eb;
+  --borde-suave: #f3f4f6;
+  --borde-input: #d1d5db;
+  --acento: #2563eb;
+  --acento-hover: #1d4ed8;
+  --acento-texto: #2563eb;
+  --clase-bg: #d1d5db;
+  --texto-eliminar: #dc2626;
+  --error-bg: #fef2f2;
+  --error-texto: #b91c1c;
+  --error-borde: #fecaca;
+  --aviso-bg: #fffbeb;
+  --aviso-texto: #92400e;
+  --aviso-borde: #fde68a;
+}
+
+/* Modo oscuro: pisa las neutras; cada tema le pone su tinte abajo. */
+:root[data-modo="oscuro"] {
+  color-scheme: dark;
+  --fondo: #111318;
+  --superficie: #1b1e26;
+  --superficie-hover: color-mix(in srgb, var(--superficie) 88%, white);
+  --campo: color-mix(in srgb, var(--superficie) 90%, white);
+  --texto: #f3f4f6;
+  --texto-2: #d1d5db;
+  --texto-3: #9ca3af;
+  --borde: #2f3441;
+  --borde-suave: #262a35;
+  --borde-input: #3b4151;
+  --clase-bg: #3a3f4d;
+  --texto-eliminar: #f87171;
+  --error-bg: rgb(220 38 38 / 0.15);
+  --error-texto: #fca5a5;
+  --error-borde: rgb(248 113 113 / 0.4);
+  --aviso-bg: rgb(245 158 11 / 0.14);
+  --aviso-texto: #fcd34d;
+  --aviso-borde: rgb(251 191 36 / 0.35);
+}
+
+/* Acentos pastel. Fondo claro = version pastel del color; el
+   boton (--acento) es un tono mas fuerte para que el texto blanco
+   siga leyendose bien (contraste). */
+:root[data-tema="cielo"] { --fondo: #eef4ff; --acento: #2563eb; --acento-hover: #1d4ed8; --acento-texto: #2563eb; }
+:root[data-tema="lavanda"] { --fondo: #f3f0ff; --acento: #6d5bd0; --acento-hover: #5b49bd; --acento-texto: #6d5bd0; }
+:root[data-tema="menta"] { --fondo: #ebf8f2; --acento: #23816a; --acento-hover: #1b6b57; --acento-texto: #23816a; }
+:root[data-tema="durazno"] { --fondo: #fff2ea; --acento: #c2562f; --acento-hover: #a94824; --acento-texto: #c2562f; }
+
+:root[data-modo="oscuro"][data-tema="cielo"] { --fondo: #0f1420; --superficie: #18202e; --borde: #2a3548; --acento-texto: #7fb0ff; }
+:root[data-modo="oscuro"][data-tema="lavanda"] { --fondo: #14121d; --superficie: #1e1b2c; --borde: #322e47; --acento-texto: #b7a9ff; }
+:root[data-modo="oscuro"][data-tema="menta"] { --fondo: #0e1714; --superficie: #16221e; --borde: #253a33; --acento-texto: #6fd6b3; }
+:root[data-modo="oscuro"][data-tema="durazno"] { --fondo: #17120f; --superficie: #221a16; --borde: #3a2c24; --acento-texto: #ffa07a; }
+
+/* Re-mapeo de las clases de Tailwind que ya usa la app. */
+.bg-white { background-color: var(--superficie); }
+.bg-gray-50 { background-color: var(--fondo); }
+.hover\:bg-gray-50:hover { background-color: var(--superficie-hover); }
+.text-gray-900 { color: var(--texto); }
+.text-gray-700, .text-gray-600 { color: var(--texto-2); }
+.text-gray-500, .text-gray-400 { color: var(--texto-3); }
+.border-gray-200 { border-color: var(--borde); }
+.border-gray-300 { border-color: var(--borde-input); }
+.divide-gray-100 > :not(:last-child) { border-color: var(--borde-suave); }
+.bg-gray-300 { background-color: var(--clase-bg); }
+.bg-blue-600 { background-color: var(--acento); }
+.hover\:bg-blue-700:hover { background-color: var(--acento-hover); }
+.text-blue-600 { color: var(--acento-texto); }
+.focus\:ring-blue-500:focus { --tw-ring-color: var(--acento); }
+.text-red-600 { color: var(--texto-eliminar); }
+.bg-red-50 { background-color: var(--error-bg); }
+.text-red-700 { color: var(--error-texto); }
+.border-red-200 { border-color: var(--error-borde); }
+.bg-amber-50 { background-color: var(--aviso-bg); }
+.text-amber-800 { color: var(--aviso-texto); }
+.border-amber-200 { border-color: var(--aviso-borde); }
+
+/* Campos de formulario: el preflight de Tailwind los deja
+   transparentes; en oscuro necesitan su propio fondo y texto. */
+input, select, textarea { background-color: var(--campo); color: var(--texto); }
+::placeholder { color: var(--texto-3); }
+
+/* ── Controles de tema (cabecera) ─────────────────────────────
+   Muestras de color = version pastel de cada tema. */
+.tema-muestra {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--borde-input);
+  cursor: pointer;
+}
+
+.tema-muestra[aria-pressed="true"] {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+.tema-muestra[data-tema-btn="cielo"] { background: #a9c4f7; }
+.tema-muestra[data-tema-btn="lavanda"] { background: #c4b8f5; }
+.tema-muestra[data-tema-btn="menta"] { background: #a8dcc8; }
+.tema-muestra[data-tema-btn="durazno"] { background: #f7c3a8; }
+
 /* ── Pestañas de navegación ───────────────────────────────────
    app.js solo mete/quita "tab-boton-activo"; el resto del look
    vive aqui para no repetir la misma sopa de clases de Tailwind
@@ -22,17 +144,17 @@
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
   font-weight: 500;
-  color: rgb(107 114 128); /* gray-500 */
+  color: var(--texto-3);
   border-bottom: 2px solid transparent;
 }
 
 .tab-boton:hover {
-  color: rgb(55 65 81); /* gray-700 */
+  color: var(--texto-2);
 }
 
 .tab-boton-activo {
-  color: rgb(37 99 235); /* blue-600 */
-  border-bottom-color: rgb(37 99 235);
+  color: var(--acento-texto);
+  border-bottom-color: var(--acento);
 }
 
 /* ── Estilos propios para el calendario semanal ──────────────
@@ -49,14 +171,14 @@
 
 .calendario-columna-dia {
   position: relative;
-  border-left: 1px solid rgb(229 231 235); /* gray-200 */
+  border-left: 1px solid var(--borde);
 }
 
 .calendario-linea-hora {
   position: absolute;
   left: 0;
   right: 0;
-  border-top: 1px solid rgb(243 244 246); /* gray-100 */
+  border-top: 1px solid var(--borde-suave);
 }
 
 .calendario-bloque {
