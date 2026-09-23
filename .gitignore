@@ -1,0 +1,35 @@
+# Dependencias — se reinstalan con `npm install`, nunca se suben.
+node_modules/
+
+# Variables de entorno — nunca se commitea, se sube .env.example en su lugar.
+.env
+.env.local
+
+# Base de datos SQLite local — es estado de datos, no código.
+# (better-sqlite3 genera estos tres archivos cuando WAL está activo)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+npm-debug.log*
+
+# Cobertura de pruebas (Jest)
+coverage/
+
+# Reportes de auditoría de seguridad si se guardan en archivo
+npm-audit-report.json
+
+# Archivos de sistema operativo
+.DS_Store
+Thumbs.db
+
+# Configuración de editor/IDE local (deja compartida solo si decides lo contrario)
+.vscode/
+.idea/
+*.antigravity/
+
+# Contexto interno del proyecto para Claude Code — no se sube al repo.
+CLAUDE.md
