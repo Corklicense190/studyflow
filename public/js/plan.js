@@ -25,6 +25,12 @@ const VENTANA_FIN_MIN    = horaAMinutosLocal('22:00');
 const PX_POR_MINUTO      = 0.8;
 
 const DIAS_SEMANA_LOCAL = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+
+const COLOR_POR_TIPO = {
+  examen: 'bg-rose-400 text-white',
+  evidencia: 'bg-indigo-400 text-white',
+  tarea: 'bg-amber-400 text-white',
+};
 const DIA_CORTO = { domingo: 'Dom', lunes: 'Lun', martes: 'Mar', miercoles: 'Mié', jueves: 'Jue', viernes: 'Vie', sabado: 'Sáb' };
 
 // "fecha" es "YYYY-MM-DD". new Date() sobre un string SOLO fecha
@@ -108,6 +114,7 @@ function renderizarCalendario(bloques) {
     <div class="flex items-center gap-4 text-xs text-gray-600 mb-3">
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-rose-400"></span> Examen</span>
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-indigo-400"></span> Evidencia</span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-amber-400"></span> Tarea</span>
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-gray-300"></span> Clase</span>
     </div>
     <div class="calendario-grid" style="--dias:${dias.length}">
@@ -143,7 +150,7 @@ function renderizarCalendario(bloques) {
       html += bloqueHtml(clase.hora_inicio, clase.hora_fin, clase.descripcion || 'Clase', 'bg-gray-300 text-gray-700');
     }
     for (const bloque of bloquesDelDia) {
-      const color = bloque.tipo === 'examen' ? 'bg-rose-400 text-white' : 'bg-indigo-400 text-white';
+      const color = COLOR_POR_TIPO[bloque.tipo] || COLOR_POR_TIPO.tarea;
       html += bloqueHtml(bloque.hora_inicio, bloque.hora_fin, bloque.materia, color);
     }
 
