@@ -47,8 +47,28 @@ function renderizarHorarios() {
   `).join('');
 }
 
+// Al crear se eligen varios días con botones; al editar un horario que ya
+// existe es un solo día y se usa la lista desplegable.
+function mostrarSelectorDias(esEdicion) {
+  document.getElementById('horario-dias-grupo').classList.toggle('hidden', esEdicion);
+  document.getElementById('horario-dia').classList.toggle('hidden', !esEdicion);
+  document.getElementById('horario-dias-etiqueta').textContent = esEdicion ? 'Día de la semana' : 'Días de la semana';
+}
+
+function diasMarcados() {
+  return [...document.querySelectorAll('input[name="horario-dias"]:checked')].map(c => c.value);
+}
+
+// Atajos ("Lunes a viernes"...): marcan justo esos días y desmarcan el resto.
+function marcarDias(lista) {
+  document.querySelectorAll('input[name="horario-dias"]').forEach(casilla => {
+    casilla.checked = lista.includes(casilla.value);
+  });
+}
+
 function llenarFormularioHorario(horario) {
   document.getElementById('horario-id').value = horario.id;
+  mostrarSelectorDias(true);
   document.getElementById('horario-dia').value = horario.dia_semana;
   document.getElementById('horario-inicio').value = horario.hora_inicio;
   document.getElementById('horario-fin').value = horario.hora_fin;
@@ -62,6 +82,7 @@ function llenarFormularioHorario(horario) {
 function limpiarFormularioHorario() {
   document.getElementById('form-horario').reset();
   document.getElementById('horario-id').value = '';
+  mostrarSelectorDias(false);
   document.getElementById('horario-form-titulo').textContent = 'Nuevo horario fijo';
   document.getElementById('horario-submit').textContent = 'Agregar';
   document.getElementById('horario-cancelar-edicion').classList.add('hidden');
@@ -74,19 +95,30 @@ async function manejarSubmitHorario(evento) {
 
   const id = document.getElementById('horario-id').value;
   const datos = {
-    dia_semana: document.getElementById('horario-dia').value,
     hora_inicio: document.getElementById('horario-inicio').value,
     hora_fin: document.getElementById('horario-fin').value,
     descripcion: document.getElementById('horario-descripcion').value,
   };
+
+  // Editar = un solo día; crear = uno o varios (el servidor crea un horario por día).
+  if (id) {
+    datos.dia_semana = document.getElementById('horario-dia').value;
+  } else {
+    datos.dias_semana = diasMarcados();
+
+    if (datos.dias_semana.length === 0) {
+      mostrarErroresFormulario('horario-form-error', new Error('Marca al menos un día de la semana.'));
+      return;
+    }
+  }
 
   try {
     if (id) {
       await api.horarios.actualizar(id, datos);
       mostrarToast('exito', 'Horario actualizado correctamente');
     } else {
-      await api.horarios.crear(datos);
-      mostrarToast('exito', 'Horario agregado correctamente');
+      const resultado = await api.horarios.crear(datos);
+      mostrarToast('exito', resultado.mensaje);
     }
     limpiarFormularioHorario();
     await cargarHorarios();
@@ -131,5 +163,9 @@ function inicializarHorarios() {
   document.getElementById('form-horario').addEventListener('submit', manejarSubmitHorario);
   document.getElementById('horario-cancelar-edicion').addEventListener('click', limpiarFormularioHorario);
   document.getElementById('horarios-lista').addEventListener('click', manejarClicListaHorarios);
+  document.querySelectorAll('[data-dias-atajo]').forEach(boton => {
+    boton.addEventListener('click', () => marcarDias(boton.dataset.diasAtajo.split(',').filter(Boolean)));
+  });
+  mostrarSelectorDias(false);
   cargarHorarios();
 }

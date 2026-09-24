@@ -8,10 +8,15 @@
 // mostrarlos campo por campo en el formulario.
 // ============================================================
 
-async function peticion(metodo, url, cuerpo) {
+// "tipoArchivo": solo para subir un archivo (Blob); si viene, el cuerpo se manda
+// tal cual con ese Content-Type en vez de como JSON.
+async function peticion(metodo, url, cuerpo, tipoArchivo) {
   const opciones = { method: metodo, headers: {} };
 
-  if (cuerpo !== undefined) {
+  if (cuerpo !== undefined && tipoArchivo) {
+    opciones.headers['Content-Type'] = tipoArchivo;
+    opciones.body = cuerpo;
+  } else if (cuerpo !== undefined) {
     opciones.headers['Content-Type'] = 'application/json';
     opciones.body = JSON.stringify(cuerpo);
   }
@@ -55,6 +60,16 @@ const api = {
     crear: (datos) => peticion('POST', '/api/horarios-fijos', datos),
     actualizar: (id, datos) => peticion('PUT', `/api/horarios-fijos/${id}`, datos),
     eliminar: (id) => peticion('DELETE', `/api/horarios-fijos/${id}`),
+  },
+  perfil: {
+    obtener: () => peticion('GET', '/api/perfil'),
+    actualizar: (datos) => peticion('PUT', '/api/perfil', datos),
+    quitarFoto: () => peticion('DELETE', '/api/perfil/foto'),
+    cambiarUsuario: (datos) => peticion('PUT', '/api/perfil/usuario', datos),
+    cambiarPassword: (datos) => peticion('PUT', '/api/perfil/password', datos),
+    eliminarCuenta: (datos) => peticion('DELETE', '/api/perfil/cuenta', datos),
+    // La foto viaja como archivo (no JSON): el cuerpo es la imagen tal cual.
+    subirFoto: (imagen) => peticion('PUT', '/api/perfil/foto', imagen, imagen.type),
   },
   plan: {
     generar: () => peticion('POST', '/api/plan/generar'),

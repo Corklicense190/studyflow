@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StudyFlow</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <!-- CSS pre-compilado con el CLI de Tailwind (npm run build:css).
        Nada de scripts externos: mantiene el CSP estricto de Helmet
        sin tener que abrir excepciones. -->
@@ -14,16 +15,53 @@
 </head>
 <body class="bg-gray-50 min-h-screen text-gray-900">
 
-  <header class="bg-white border-b border-gray-200">
-    <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-3 flex-wrap">
-      <div>
-        <h1 class="text-xl font-bold">StudyFlow</h1>
-        <p class="hidden sm:block text-xs text-gray-500">Optimizador de horarios de estudio</p>
-      </div>
+  <!-- Estructura general: barra lateral (en pantallas anchas) + contenido.
+       En celular la barra pasa arriba y el menú se recorre en horizontal. -->
+  <div class="shell">
 
-      <!-- Controles de tema: cuatro acentos pastel + modo claro/oscuro.
+  <aside class="barra-lateral">
+    <div class="marca">
+      <span class="marca-logo">
+        <!-- Logo propio: una "S" que es también un camino (flow), con punto de
+             inicio y de llegada. Es el mismo dibujo de public/favicon.svg. -->
+        <svg class="marca-glifo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M17 6.8C15.9 5.6 14.2 5 12.4 5 9.9 5 8 6.3 8 8.3c0 2 1.7 2.8 4.4 3.5 2.9.8 4.6 1.7 4.6 3.9 0 2-1.9 3.4-4.6 3.4-1.9 0-3.6-.7-4.7-1.9"/>
+          <circle cx="19.4" cy="5.6" r="1.9" stroke-width="1.6"/>
+          <circle cx="5.4" cy="18.4" r="1.9" stroke-width="1.6"/>
+        </svg>
+      </span>
+      <div>
+        <h1 class="marca-nombre">StudyFlow</h1>
+        <p class="marca-lema">Estudia con un plan</p>
+      </div>
+    </div>
+
+    <!-- Menú principal: solo con sesión iniciada (lo muestra public/js/auth.js).
+         app.js le da vida a los botones .tab-boton. -->
+    <nav id="nav-principal" class="nav-principal hidden" role="tablist" aria-label="Secciones">
+      <button type="button" class="tab-boton" data-tab="entregables" role="tab" aria-selected="true">
+        <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+        <span>Entregables</span>
+      </button>
+      <button type="button" class="tab-boton" data-tab="horarios" role="tab" aria-selected="false">
+        <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span>Horarios fijos</span>
+      </button>
+      <button type="button" class="tab-boton" data-tab="plan" role="tab" aria-selected="false">
+        <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 10h18"/></svg>
+        <span>Plan de estudio</span>
+      </button>
+      <button type="button" class="tab-boton" data-tab="perfil" role="tab" aria-selected="false">
+        <svg class="icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+        <span>Mi perfil</span>
+      </button>
+    </nav>
+
+    <div class="barra-pie">
+      <!-- Apariencia: cuatro acentos pastel + modo claro/oscuro.
            La lógica vive en public/js/tema.js. -->
-      <div class="flex items-center gap-3">
+      <div class="apariencia">
+        <p class="apariencia-titulo">Apariencia</p>
         <div class="flex items-center gap-2" role="group" aria-label="Color del tema">
           <button type="button" class="tema-muestra" data-tema-btn="cielo" title="Tema cielo" aria-label="Tema cielo" aria-pressed="false"></button>
           <button type="button" class="tema-muestra" data-tema-btn="lavanda" title="Tema lavanda" aria-label="Tema lavanda" aria-pressed="false"></button>
@@ -34,24 +72,32 @@
           class="rounded-md border border-gray-300 text-sm font-medium px-3 py-1.5 hover:bg-gray-50">
           Modo oscuro
         </button>
+      </div>
 
-        <!-- Solo visible con sesión iniciada (lo muestra public/js/auth.js). -->
-        <div id="usuario-area" class="hidden flex items-center gap-2">
-          <span id="usuario-nombre" class="text-sm text-gray-600"></span>
-          <button type="button" id="boton-logout"
-            class="rounded-md border border-gray-300 text-sm font-medium px-3 py-1.5 hover:bg-gray-50">
-            Cerrar sesión
-          </button>
-        </div>
+      <!-- Solo visible con sesión iniciada (lo muestra public/js/auth.js). -->
+      <div id="usuario-area" class="usuario-area hidden">
+        <button type="button" id="usuario-perfil" class="usuario-perfil" title="Ir a mi perfil">
+          <span class="avatar avatar-chico">
+            <span id="usuario-letra" class="avatar-letra"></span>
+            <img id="usuario-foto" class="avatar-foto hidden" alt="" />
+          </span>
+          <span id="usuario-nombre" class="usuario-nombre"></span>
+        </button>
+        <button type="button" id="boton-logout"
+          class="rounded-md border border-gray-300 text-sm font-medium px-3 py-1.5 hover:bg-gray-50">
+          Cerrar sesión
+        </button>
       </div>
     </div>
-  </header>
+  </aside>
+
+  <div class="contenido">
 
   <!-- ════════════════════════════════════════════════════════════
        VISTA: INICIAR SESIÓN / CREAR CUENTA
        Se muestra cuando no hay sesión (lo decide public/js/app.js).
        ════════════════════════════════════════════════════════════ -->
-  <section id="vista-auth" class="hidden max-w-md mx-auto px-4 py-10">
+  <section id="vista-auth" class="hidden max-w-md mx-auto px-4 py-12">
     <div class="bg-white rounded-lg border border-gray-200 p-6">
       <h2 id="auth-titulo" class="text-lg font-semibold mb-1">Iniciar sesión</h2>
       <p class="text-sm text-gray-500 mb-4">Tus entregables y horarios son privados: solo tú los ves.</p>
@@ -94,22 +140,12 @@
        ════════════════════════════════════════════════════════════ -->
   <div id="vista-app" class="hidden">
 
-  <!-- ── Navegacion por pestañas ──────────────────────────────── -->
-  <nav class="max-w-5xl mx-auto px-4 mt-4">
-    <div class="flex gap-2 border-b border-gray-200" role="tablist">
-      <button type="button" class="tab-boton" data-tab="entregables" role="tab" aria-selected="true">
-        Entregables
-      </button>
-      <button type="button" class="tab-boton" data-tab="horarios" role="tab" aria-selected="false">
-        Horarios fijos
-      </button>
-      <button type="button" class="tab-boton" data-tab="plan" role="tab" aria-selected="false">
-        Plan de estudio
-      </button>
-    </div>
-  </nav>
+  <main class="max-w-6xl mx-auto px-4 md:px-8 py-6 space-y-6">
 
-  <main class="max-w-5xl mx-auto px-4 py-6 space-y-6">
+      <div class="pagina-titulo">
+        <h2 id="pagina-titulo">Entregables</h2>
+        <p id="pagina-subtitulo"></p>
+      </div>
 
     <!-- ════════════════════════════════════════════════════════
          PESTAÑA: ENTREGABLES
@@ -169,6 +205,14 @@
               class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
+          <div class="sm:col-span-2">
+            <label for="entregable-notas" class="block text-sm font-medium text-gray-700 mb-1">Qué estudiar / recordatorio (opcional)</label>
+            <textarea id="entregable-notas" rows="3" maxlength="500"
+              placeholder="Ej. Repasar los capítulos 3 y 4 y rehacer los ejercicios de la guía"
+              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+            <p id="entregable-notas-contador" class="text-xs text-gray-500 mt-1 text-right">0/500</p>
+          </div>
+
           <div class="sm:col-span-2 flex gap-3 pt-2">
             <button type="submit" id="entregable-submit"
               class="rounded-md bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700">
@@ -214,10 +258,31 @@
         <form id="form-horario" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <input type="hidden" id="horario-id" />
 
-          <div>
-            <label for="horario-dia" class="block text-sm font-medium text-gray-700 mb-1">Día de la semana</label>
-            <select id="horario-dia" required
-              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <div class="sm:col-span-2">
+            <span id="horario-dias-etiqueta" class="block text-sm font-medium text-gray-700 mb-1">Días de la semana</span>
+
+            <!-- Al CREAR se pueden marcar varios días de una vez: se crea un horario
+                 por cada día marcado, a la misma hora. -->
+            <div id="horario-dias-grupo">
+              <div class="flex flex-wrap gap-2" role="group" aria-labelledby="horario-dias-etiqueta">
+              <label class="dia-pildora"><input type="checkbox" name="horario-dias" value="lunes" /><span>Lun</span></label>
+              <label class="dia-pildora"><input type="checkbox" name="horario-dias" value="martes" /><span>Mar</span></label>
+              <label class="dia-pildora"><input type="checkbox" name="horario-dias" value="miercoles" /><span>Mié</span></label>
+              <label class="dia-pildora"><input type="checkbox" name="horario-dias" value="jueves" /><span>Jue</span></label>
+              <label class="dia-pildora"><input type="checkbox" name="horario-dias" value="viernes" /><span>Vie</span></label>
+              <label class="dia-pildora"><input type="checkbox" name="horario-dias" value="sabado" /><span>Sáb</span></label>
+              <label class="dia-pildora"><input type="checkbox" name="horario-dias" value="domingo" /><span>Dom</span></label>
+              </div>
+              <div class="flex flex-wrap gap-3 mt-2 text-xs">
+                <button type="button" class="text-blue-600 hover:underline" data-dias-atajo="lunes,martes,miercoles,jueves,viernes">Lunes a viernes</button>
+                <button type="button" class="text-blue-600 hover:underline" data-dias-atajo="lunes,miercoles,viernes">Lun-Mié-Vie</button>
+                <button type="button" class="text-blue-600 hover:underline" data-dias-atajo="martes,jueves">Mar-Jue</button>
+                <button type="button" class="text-blue-600 hover:underline" data-dias-atajo="">Limpiar</button>
+              </div>
+            </div>
+
+            <!-- Al EDITAR un horario existente es un solo día. -->
+            <select id="horario-dia" class="hidden w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" aria-labelledby="horario-dias-etiqueta">
               <option value="lunes">Lunes</option>
               <option value="martes">Martes</option>
               <option value="miercoles">Miércoles</option>
@@ -228,7 +293,7 @@
             </select>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-2 gap-3 sm:col-span-2 sm:max-w-md">
             <div>
               <label for="horario-inicio" class="block text-sm font-medium text-gray-700 mb-1">Hora inicio</label>
               <input type="time" id="horario-inicio" required
@@ -368,9 +433,155 @@
       <div id="plan-calendario-envoltura" class="hidden bg-white rounded-lg border border-gray-200 mt-4 p-4 overflow-x-auto"></div>
     </section>
 
+
+    <!-- ════════════════════════════════════════════════════════
+         PESTAÑA: MI PERFIL
+         ════════════════════════════════════════════════════════ -->
+    <section id="tab-perfil" class="tab-panel hidden">
+      <!-- Foto y resumen -->
+      <div class="bg-white rounded-lg border border-gray-200 p-5 flex items-center gap-5 flex-wrap">
+        <span class="avatar avatar-grande">
+          <span id="perfil-letra" class="avatar-letra"></span>
+          <img id="perfil-foto" class="avatar-foto hidden" alt="Tu foto de perfil" />
+        </span>
+
+        <div class="flex-1 min-w-0" style="min-width:12rem">
+          <h3 id="perfil-nombre" class="text-xl font-bold"></h3>
+          <p id="perfil-usuario" class="text-sm text-gray-500"></p>
+          <p id="perfil-resumen" class="text-sm text-gray-600 mt-1"></p>
+
+          <div class="flex flex-wrap gap-3 mt-3">
+            <button type="button" id="perfil-foto-cambiar"
+              class="rounded-md bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700">
+              Cambiar foto
+            </button>
+            <button type="button" id="perfil-foto-quitar"
+              class="hidden rounded-md border border-gray-300 text-sm font-medium px-4 py-2 hover:bg-gray-50">
+              Quitar foto
+            </button>
+            <input type="file" id="perfil-foto-archivo" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" />
+          </div>
+          <p class="text-xs text-gray-500 mt-2">JPG, PNG o WebP. Se recorta en cuadro y se reduce automáticamente.</p>
+        </div>
+      </div>
+
+      <!-- Sobre ti -->
+      <div class="bg-white rounded-lg border border-gray-200 mt-4 p-5">
+        <h3 class="text-base font-semibold mb-1">Sobre ti</h3>
+        <p class="text-sm text-gray-500 mb-4">Todo es opcional. Solo tú ves esta información.</p>
+
+        <div id="perfil-datos-error" class="hidden mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2"></div>
+
+        <form id="form-perfil-datos" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="sm:col-span-2">
+            <label for="perfil-apodo" class="block text-sm font-medium text-gray-700 mb-1">Apodo (cómo quieres que te llame la app)</label>
+            <input type="text" id="perfil-apodo" maxlength="40"
+              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          <div>
+            <label for="perfil-institucion" class="block text-sm font-medium text-gray-700 mb-1">Dónde estudias</label>
+            <input type="text" id="perfil-institucion" maxlength="100"
+              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          <div>
+            <label for="perfil-carrera" class="block text-sm font-medium text-gray-700 mb-1">Carrera o programa</label>
+            <input type="text" id="perfil-carrera" maxlength="100"
+              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div class="sm:col-span-2">
+            <label for="perfil-sobre-mi" class="block text-sm font-medium text-gray-700 mb-1">Algo sobre ti</label>
+            <textarea id="perfil-sobre-mi" rows="3" maxlength="300"
+              placeholder="Ej. Estudio mejor por las noches y me cuesta más matemáticas"
+              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+            <p id="perfil-sobre-mi-contador" class="text-xs text-gray-500 mt-1 text-right">0/300</p>
+          </div>
+          <div class="sm:col-span-2">
+            <button type="submit"
+              class="rounded-md bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700">
+              Guardar perfil
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Cuenta: usuario y contraseña. Los dos piden la contraseña actual. -->
+      <div class="bg-white rounded-lg border border-gray-200 mt-4 p-5">
+        <h3 class="text-base font-semibold mb-1">Nombre de usuario</h3>
+        <p class="text-sm text-gray-500 mb-4">Es el nombre con el que inicias sesión. Por seguridad, pide tu contraseña actual.</p>
+
+        <div id="perfil-usuario-error" class="hidden mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2"></div>
+
+        <form id="form-perfil-usuario" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label for="perfil-nuevo-usuario" class="block text-sm font-medium text-gray-700 mb-1">Nuevo nombre de usuario</label>
+            <input type="text" id="perfil-nuevo-usuario" required maxlength="30" autocomplete="username"
+              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label for="perfil-usuario-password" class="block text-sm font-medium text-gray-700 mb-1">Contraseña actual</label>
+            <input type="password" id="perfil-usuario-password" required autocomplete="current-password"
+              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div class="sm:col-span-2">
+            <button type="submit"
+              class="rounded-md border border-gray-300 text-sm font-medium px-4 py-2 hover:bg-gray-50">
+              Cambiar nombre de usuario
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div class="bg-white rounded-lg border border-gray-200 mt-4 p-5">
+        <h3 class="text-base font-semibold mb-1">Contraseña</h3>
+        <p class="text-sm text-gray-500 mb-4">Al cambiarla se cierran tus sesiones abiertas en otros dispositivos.</p>
+
+        <div id="perfil-password-error" class="hidden mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2"></div>
+
+        <form id="form-perfil-password" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="sm:col-span-2 sm:max-w-sm">
+            <label for="perfil-password-actual" class="block text-sm font-medium text-gray-700 mb-1">Contraseña actual</label>
+            <input type="password" id="perfil-password-actual" required autocomplete="current-password"
+              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label for="perfil-password-nueva" class="block text-sm font-medium text-gray-700 mb-1">Contraseña nueva (mínimo 8 caracteres)</label>
+            <input type="password" id="perfil-password-nueva" required autocomplete="new-password"
+              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label for="perfil-password-confirmar" class="block text-sm font-medium text-gray-700 mb-1">Confirmar contraseña nueva</label>
+            <input type="password" id="perfil-password-confirmar" required autocomplete="new-password"
+              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+          <div class="sm:col-span-2">
+            <button type="submit"
+              class="rounded-md border border-gray-300 text-sm font-medium px-4 py-2 hover:bg-gray-50">
+              Cambiar contraseña
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Zona de peligro: eliminar la cuenta. Igual que GitHub al borrar un
+           repositorio, pide escribir el nombre de usuario y la contraseña. -->
+      <div class="zona-peligro rounded-lg mt-4 p-5">
+        <h3 class="text-base font-semibold text-red-600 mb-1">Eliminar cuenta</h3>
+        <p class="text-sm text-gray-500 mb-4">Se borran para siempre tu cuenta, tus entregables, tus horarios, tu plan y tu foto. No se puede deshacer.</p>
+        <button type="button" id="cuenta-eliminar-abrir"
+          class="rounded-md bg-red-600 text-white text-sm font-medium px-4 py-2 hover:bg-red-700">
+          Eliminar mi cuenta…
+        </button>
+      </div>
+    </section>
+
   </main>
 
   </div><!-- /vista-app -->
+
+  </div><!-- /contenido -->
+  </div><!-- /shell -->
 
   <!-- ── Modal de confirmacion (compartido) ──────────────────── -->
   <div id="modal-confirmacion" class="hidden fixed inset-0 z-50 items-center justify-center bg-black/50 px-4">
@@ -390,6 +601,73 @@
     </div>
   </div>
 
+  <!-- ── Confirmación para eliminar la cuenta ──────────────────── -->
+  <div id="modal-cuenta" class="hidden fixed inset-0 z-50 items-center justify-center bg-black/50 px-4">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" role="dialog" aria-modal="true" aria-labelledby="cuenta-titulo">
+      <h3 id="cuenta-titulo" class="text-lg font-semibold text-red-600">Eliminar tu cuenta</h3>
+      <p class="mt-2 text-sm text-gray-600">
+        Esto borra <strong>para siempre</strong> tu cuenta y todos tus datos. No hay forma de recuperarlos.
+      </p>
+
+      <div id="cuenta-error" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2"></div>
+
+      <form id="form-cuenta-eliminar" class="mt-4 space-y-4">
+        <div>
+          <label for="cuenta-confirmacion" class="block text-sm font-medium text-gray-700 mb-1">
+            Para confirmar, escribe tu nombre de usuario: <strong id="cuenta-usuario-esperado"></strong>
+          </label>
+          <input type="text" id="cuenta-confirmacion" autocomplete="off" autocapitalize="off" spellcheck="false"
+            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label for="cuenta-password" class="block text-sm font-medium text-gray-700 mb-1">Tu contraseña</label>
+          <input type="password" id="cuenta-password" autocomplete="current-password"
+            class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" id="cuenta-cancelar"
+            class="rounded-md border border-gray-300 text-sm font-medium px-4 py-2 hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button type="submit" id="cuenta-confirmar" disabled
+            class="rounded-md bg-red-600 text-white text-sm font-medium px-4 py-2 hover:bg-red-700">
+            Eliminar mi cuenta para siempre
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Detalle de un bloque del calendario ─────────────────── -->
+  <div id="modal-bloque" class="hidden fixed inset-0 z-50 items-center justify-center bg-black/50 px-4">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6" role="dialog" aria-modal="true" aria-labelledby="bloque-titulo">
+      <span id="bloque-tipo" class="chip-tipo"></span>
+      <h3 id="bloque-titulo" class="text-lg font-semibold text-gray-900 mt-2"></h3>
+
+      <dl class="mt-4 text-sm space-y-1">
+        <div class="flex gap-2"><dt class="text-gray-500 w-28 shrink-0">Sesión</dt><dd id="bloque-sesion" class="text-gray-900"></dd></div>
+        <div class="flex gap-2"><dt class="text-gray-500 w-28 shrink-0">Fecha límite</dt><dd id="bloque-limite" class="text-gray-900"></dd></div>
+      </dl>
+
+      <div class="mt-4">
+        <h4 class="text-sm font-medium text-gray-700">Qué estudiar</h4>
+        <p id="bloque-notas" class="nota-completa text-sm mt-1"></p>
+      </div>
+
+      <div class="mt-6 flex justify-end gap-3">
+        <button type="button" id="bloque-editar"
+          class="rounded-md border border-gray-300 text-sm font-medium px-4 py-2 hover:bg-gray-50">
+          Editar entregable
+        </button>
+        <button type="button" id="bloque-cerrar"
+          class="rounded-md bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Toasts ───────────────────────────────────────────────── -->
   <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
 
@@ -400,6 +678,7 @@
   <script src="/js/entregables.js" defer></script>
   <script src="/js/horarios.js" defer></script>
   <script src="/js/plan.js" defer></script>
+  <script src="/js/perfil.js" defer></script>
   <script src="/js/app.js" defer></script>
 </body>
 </html>

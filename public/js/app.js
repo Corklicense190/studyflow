@@ -7,7 +7,19 @@
 // inicializan una vez que el DOM está listo.
 // ============================================================
 
+// Título y explicación que se muestran arriba de cada sección.
+const TITULOS_PAGINA = new Map([
+  ['entregables', ['Entregables', 'Tus exámenes, evidencias y tareas con su fecha límite.']],
+  ['horarios', ['Horarios fijos', 'Tus clases y compromisos: el plan nunca los pisa.']],
+  ['plan', ['Plan de estudio', 'Cuándo estudiar cada cosa. Toca un bloque para ver qué estudiar.']],
+  ['perfil', ['Mi perfil', 'Tu foto, tus datos y la seguridad de tu cuenta.']],
+]);
+
 function cambiarTab(nombre) {
+  const [titulo, subtitulo] = TITULOS_PAGINA.get(nombre) || TITULOS_PAGINA.get('entregables');
+  document.getElementById('pagina-titulo').textContent = titulo;
+  document.getElementById('pagina-subtitulo').textContent = subtitulo;
+
   document.querySelectorAll('.tab-panel').forEach(panel => {
     panel.classList.toggle('hidden', panel.id !== `tab-${nombre}`);
   });
@@ -31,7 +43,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (evento.target.id === 'modal-confirmacion') cerrarModalConfirmacion();
   });
   document.addEventListener('keydown', (evento) => {
-    if (evento.key === 'Escape') cerrarModalConfirmacion();
+    if (evento.key === 'Escape') {
+      cerrarModalConfirmacion();
+      cerrarModalBloque();
+      cerrarModalCuenta();
+    }
   });
 
   inicializarAuth();
@@ -47,9 +63,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
+  // Sesión ligada a la pestaña (ver public/js/auth.js): tras recargar, o en una
+  // pestaña que no inició sesión, se cierra y se pide la contraseña otra vez.
+  if (debeCerrarSesionAlCargar()) {
+    try { sessionStorage.setItem(CLAVE_AVISO_AUTH, 'Por seguridad, tu sesión se cierra al recargar o cerrar la página. Inicia sesión de nuevo.'); } catch { /* sin aviso */ }
+    try { await api.auth.logout(); } catch { /* si falla, igual se muestra el login */ }
+    mostrarVistaAuth();
+    return;
+  }
+
   mostrarVistaApp(usuario);
+  activarCierreAlSalir();
   inicializarColores();
   inicializarEntregables();
   inicializarHorarios();
   inicializarPlan();
+  inicializarPerfil();
 });

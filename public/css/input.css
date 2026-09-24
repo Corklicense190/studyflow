@@ -176,20 +176,372 @@ input, select, textarea { background-color: var(--campo); color: var(--texto); }
    vive aqui para no repetir la misma sopa de clases de Tailwind
    en los 3 botones del HTML. */
 .tab-boton {
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.75rem;
+  font-size: 0.9rem;
   font-weight: 500;
-  color: var(--texto-3);
-  border-bottom: 2px solid transparent;
-}
-
-.tab-boton:hover {
+  white-space: nowrap;
   color: var(--texto-2);
 }
 
-.tab-boton-activo {
+.tab-boton:hover {
+  background-color: var(--superficie-hover);
+}
+
+.tab-boton-activo,
+.tab-boton-activo:hover {
   color: var(--acento-texto);
-  border-bottom-color: var(--acento);
+  font-weight: 600;
+  background-color: color-mix(in srgb, var(--acento) 14%, transparent);
+}
+
+.icono {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+}
+
+/* ── Estructura: barra lateral + contenido ────────────────────
+   En celular la barra queda arriba y el menú se recorre en
+   horizontal; desde pantallas medianas pasa a ser una columna fija
+   a la izquierda que se queda visible al hacer scroll. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.contenido {
+  flex: 1;
+  min-width: 0;
+}
+
+.barra-lateral {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 0.9rem 1rem;
+  background-color: var(--superficie);
+  border-bottom: 1px solid var(--borde);
+}
+
+.marca {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.marca-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.8rem;
+  color: #ffffff;
+  background: linear-gradient(140deg, var(--acento), color-mix(in srgb, var(--acento) 55%, #000000));
+}
+
+.marca-glifo {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+
+.marca-nombre {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.marca-lema {
+  font-size: 0.75rem;
+  color: var(--texto-3);
+}
+
+.nav-principal {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+}
+
+/* En celular el encabezado se compacta: sin lema ni rótulo de apariencia,
+   y el menú se recorre sin mostrar barra de desplazamiento. */
+.marca-lema,
+.apariencia-titulo {
+  display: none;
+}
+
+.nav-principal {
+  scrollbar-width: none;
+}
+
+.nav-principal::-webkit-scrollbar {
+  display: none;
+}
+
+.nav-principal.hidden,
+.usuario-area.hidden {
+  display: none;
+}
+
+.barra-pie {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.apariencia {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.apariencia-titulo {
+  width: 100%;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--texto-3);
+}
+
+.usuario-area {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* Avatar: la inicial, o la foto encima si el usuario subió una. */
+.avatar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 9999px;
+  font-weight: 700;
+  color: var(--acento-texto);
+  background-color: color-mix(in srgb, var(--acento) 16%, transparent);
+}
+
+.avatar-chico {
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 0.95rem;
+}
+
+.avatar-grande {
+  width: 6rem;
+  height: 6rem;
+  font-size: 2.4rem;
+}
+
+.avatar-foto {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-foto.hidden,
+.avatar-letra.hidden {
+  display: none;
+}
+
+/* Avatar + nombre de la barra lateral: es un botón que abre el perfil. */
+.usuario-perfil {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.25rem;
+  border-radius: 0.75rem;
+  text-align: left;
+}
+
+.usuario-perfil:hover {
+  background-color: var(--superficie-hover);
+}
+
+.usuario-nombre {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--texto-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 9rem;
+}
+
+@media (min-width: 768px) {
+  .marca-lema {
+    display: block;
+  }
+
+  .apariencia-titulo {
+    display: block;
+  }
+
+  .shell {
+    flex-direction: row;
+  }
+
+  .barra-lateral {
+    position: sticky;
+    top: 0;
+    width: 15.5rem;
+    height: 100vh;
+    flex-shrink: 0;
+    gap: 1.5rem;
+    padding: 1.5rem 1rem;
+    overflow-y: auto;
+    border-bottom: 0;
+    border-right: 1px solid var(--borde);
+  }
+
+  .nav-principal {
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .barra-pie {
+    flex-direction: column;
+    align-items: stretch;
+    margin-top: auto;
+    padding-top: 1rem;
+    border-top: 1px solid var(--borde);
+  }
+
+  .apariencia {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .usuario-area {
+    flex-wrap: wrap;
+  }
+
+  .usuario-area button {
+    width: 100%;
+  }
+}
+
+/* Título de cada sección, arriba del contenido. */
+.pagina-titulo h2 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.pagina-titulo p {
+  margin-top: 0.15rem;
+  font-size: 0.9rem;
+  color: var(--texto-3);
+}
+
+/* Tarjetas y controles un poco más suaves y con relieve ligero. */
+.rounded-lg { border-radius: 1rem; }
+.rounded-md { border-radius: 0.65rem; }
+.bg-white.rounded-lg.border {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 8px 20px -12px rgb(0 0 0 / 0.14);
+}
+
+/* Botones de día (Lun, Mar...) al crear un horario fijo. El checkbox real
+   queda escondido pero sigue siendo accesible por teclado; la "píldora" es
+   el span que le sigue. */
+.dia-pildora {
+  position: relative;
+  cursor: pointer;
+}
+
+.dia-pildora input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  cursor: pointer;
+}
+
+.dia-pildora span {
+  display: block;
+  min-width: 3.4rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--borde-input);
+  border-radius: 9999px;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--texto-2);
+  background-color: var(--campo);
+  transition: background-color 0.12s, color 0.12s;
+}
+
+.dia-pildora:hover span {
+  background-color: var(--superficie-hover);
+}
+
+.dia-pildora input:checked + span {
+  color: #ffffff;
+  border-color: var(--acento);
+  background-color: var(--acento);
+}
+
+.dia-pildora input:focus-visible + span {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+/* Tarjeta de "Eliminar cuenta": borde rojo para que se note que es peligrosa. */
+.zona-peligro {
+  border: 1px solid var(--error-borde);
+  background-color: var(--superficie);
+}
+
+/* Botón rojo desactivado hasta que se confirme. */
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Etiqueta con el tipo, en el detalle de un bloque. */
+.chip-tipo {
+  display: inline-block;
+  padding: 0.1rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Notas: resumen de 2 líneas en la lista y texto completo en el detalle.
+   pre-line respeta los saltos de línea que escribió el usuario. */
+.nota-previa {
+  margin-top: 0.15rem;
+  max-width: 28rem;
+  font-size: 0.75rem;
+  color: var(--texto-3);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.nota-completa {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  color: var(--texto);
+}
+
+.nota-completa.nota-vacia {
+  color: var(--texto-3);
+  font-style: italic;
 }
 
 /* ── Estilos propios para el calendario semanal ──────────────
@@ -222,12 +574,40 @@ input, select, textarea { background-color: var(--campo); color: var(--texto); }
   right: 2px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  border-radius: 0.375rem;
+  /* Nombre y horas quedan en el centro (vertical) y pegados a la izquierda. */
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0.1rem;
+  text-align: left;
+  border-radius: 0.5rem;
   overflow: hidden;
-  padding: 2px 6px;
+  padding: 2px 8px;
   font-size: 0.875rem;
   line-height: 1.15;
+}
+
+/* Los bloques de estudio son botones: se pueden tocar y abren su detalle. */
+button.calendario-bloque {
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+
+button.calendario-bloque:hover {
+  filter: brightness(1.06);
+}
+
+button.calendario-bloque:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 1px;
+}
+
+.calendario-nota {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-left: 0.35rem;
+  vertical-align: -0.1rem;
+  opacity: 0.85;
 }
 
 /* Un bloque de 30 min mide muy poco de alto: nombre y horas en UNA fila
@@ -239,10 +619,14 @@ input, select, textarea { background-color: var(--campo); color: var(--texto); }
   gap: 0.5rem;
 }
 
-.calendario-bloque-corto > span:first-child {
+.calendario-bloque-corto > .calendario-bloque-nombre {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.calendario-bloque-corto {
+  justify-content: space-between;
 }
 
 .calendario-bloque-corto .calendario-bloque-horas {
@@ -250,7 +634,7 @@ input, select, textarea { background-color: var(--campo); color: var(--texto); }
 }
 
 .calendario-bloque-horas {
-  align-self: flex-end;
+  align-self: flex-start;
   font-size: 0.75rem;
   opacity: 0.9;
   white-space: nowrap;

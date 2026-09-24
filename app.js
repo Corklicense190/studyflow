@@ -27,6 +27,7 @@ const entregables   = require('./routes/entregables');
 const horarios      = require('./routes/horarios');
 const plan          = require('./routes/plan');
 const configuracion = require('./routes/configuracion');
+const perfil        = require('./routes/perfil');
 
 const app = express();
 
@@ -105,7 +106,7 @@ app.use(session({
   saveUninitialized: false,
   resave: false,
   // Cada petición renueva el vencimiento: la sesión dura 8 horas
-  // de INACTIVIDAD, no 8 horas desde que se entró.
+  // de INACTIVIDAD (en el servidor), no 8 horas desde que se entró.
   rolling: true,
   cookie: {
     // JavaScript de la página no puede leer la cookie: si alguna vez
@@ -118,7 +119,11 @@ app.use(session({
     // HTTPS). En local (http://localhost) tiene que estar apagado o
     // el navegador no guardaría la cookie.
     secure: process.env.COOKIE_SEGURA === 'true',
-    maxAge: 8 * 60 * 60 * 1000,
+    // SIN maxAge/expires a propósito: es una cookie "de sesión del navegador".
+    // El navegador la descarta al cerrarse, y no se guarda en disco. (El
+    // frontend además cierra la sesión al recargar o cerrar la pestaña, ver
+    // public/js/auth.js.) El vencimiento por inactividad, de 8 horas, se
+    // controla en el servidor: db/almacen-sesiones.js.
   },
 }));
 
@@ -140,6 +145,7 @@ app.use('/api/entregables', requerirSesion, entregables);
 app.use('/api/horarios-fijos', requerirSesion, horarios);
 app.use('/api/plan', requerirSesion, plan);
 app.use('/api/configuracion', requerirSesion, configuracion);
+app.use('/api/perfil', requerirSesion, perfil);
 
 // ── 404 y errores ────────────────────────────────────────────
 // Si ningún router manejó la petición, respondemos con JSON en
@@ -153,8 +159,19 @@ app.use((req, res) => {
 // Los 4 parámetros son obligatorios: así Express reconoce que es un
 // manejador de errores (aunque "next" no se use).
 app.use((err, req, res, next) => {
+  // Si la respuesta ya empezó a enviarse no se puede mandar otra: se deja
+  // que Express cierre la conexión (intentarlo lanzaría ERR_HTTP_HEADERS_SENT).
+  if (res.headersSent) {
+    return next(err);
+  }
+
   if (err.type === 'entity.parse.failed') {
     return res.status(400).json({ error: 'El cuerpo de la petición no es JSON válido' });
+  }
+
+  // Cuerpo más grande que el límite de la ruta (ej. una foto de más de 300 KB).
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'El archivo es demasiado grande' });
   }
 
   // El detalle SOLO va al log del servidor (Runtime Logs de Vercel), nunca

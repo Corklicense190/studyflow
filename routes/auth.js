@@ -21,18 +21,21 @@
 const express   = require('express');
 const bcrypt    = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
-const { body, validationResult } = require('express-validator');
+const { body } = require('express-validator');
 
 const db = require('../db/database');
 const AlmacenLimitesPostgres = require('../db/almacen-limites');
 const { requerirSesion } = require('../middleware/seguridad');
+const {
+  COSTO_BCRYPT,
+  POSTGRES_UNIQUE_VIOLATION,
+  manejarErroresValidacion,
+  reglaNombreUsuario,
+  reglaPasswordNueva,
+  abrirSesion,
+} = require('../middleware/cuenta');
 
 const router = express.Router();
-
-// Costo de bcrypt: cada +1 duplica el tiempo de cálculo. 12 es un
-// valor razonable hoy (~250 ms por contraseña); en pruebas se baja
-// a 4 solo para que la suite no tarde.
-const COSTO_BCRYPT = process.env.NODE_ENV === 'test' ? 4 : 12;
 
 // Hash de una contraseña que nadie conoce, para el caso "usuario
 // inexistente" del login (ver arriba). Se calcula la primera vez que
@@ -44,13 +47,6 @@ function obtenerHashSenuelo() {
   }
   return hashSenuelo;
 }
-
-// bcrypt solo considera los primeros 72 BYTES de la contraseña; más
-// allá los ignora en silencio. Se rechaza en vez de truncar.
-const MAX_BYTES_PASSWORD = 72;
-
-// Código de error de Postgres para "violación de restricción UNIQUE".
-const POSTGRES_UNIQUE_VIOLATION = '23505';
 
 // ── Límites de intentos ──────────────────────────────────────
 const limitadorLogin = rateLimit({
@@ -73,37 +69,9 @@ const limitadorRegistro = rateLimit({
   message: { error: 'Demasiados registros desde esta dirección. Inténtalo más tarde.' },
 });
 
-function manejarErroresValidacion(req, res, next) {
-  const errores = validationResult(req);
-
-  if (!errores.isEmpty()) {
-    return res.status(400).json({
-      error: 'Datos inválidos',
-      detalle: errores.array().map(e => ({ campo: e.path, mensaje: e.msg })),
-    });
-  }
-
-  next();
-}
-
-// Al registrarse se validan las reglas completas de usuario y contraseña.
-const reglasRegistro = [
-  body('nombre_usuario')
-    .isString().withMessage('El nombre de usuario es obligatorio')
-    .bail()
-    .trim()
-    .isLength({ min: 3, max: 30 }).withMessage('El nombre de usuario debe tener entre 3 y 30 caracteres')
-    .bail()
-    .matches(/^[A-Za-z0-9_.-]+$/).withMessage('El nombre de usuario solo puede tener letras, números, punto, guion y guion bajo'),
-
-  body('password')
-    .isString().withMessage('La contraseña es obligatoria')
-    .bail()
-    .isLength({ min: 8 }).withMessage('La contraseña debe tener al menos 8 caracteres')
-    .bail()
-    .custom(valor => Buffer.byteLength(valor, 'utf8') <= MAX_BYTES_PASSWORD)
-    .withMessage('La contraseña es demasiado larga (máximo 72 bytes)'),
-];
+// Al registrarse se validan las reglas completas de usuario y contraseña
+// (las mismas que exige el perfil al cambiarlos: middleware/cuenta.js).
+const reglasRegistro = [reglaNombreUsuario('nombre_usuario'), reglaPasswordNueva('password')];
 
 // Al entrar solo se exige que vengan datos: no se le explica a quien
 // adivina cuáles son las reglas de las contraseñas.
@@ -111,28 +79,6 @@ const reglasLogin = [
   body('nombre_usuario').isString().trim().isLength({ min: 1, max: 100 }).withMessage('Escribe tu nombre de usuario'),
   body('password').isString().isLength({ min: 1, max: 1000 }).withMessage('Escribe tu contraseña'),
 ];
-
-// Abre la sesión del usuario. regenerate() crea un id de sesión
-// NUEVO: si alguien le hubiera plantado un id conocido al navegador
-// antes de entrar (fijación de sesión), deja de servirle.
-function abrirSesion(req, res, usuario, estadoHttp) {
-  req.session.regenerate(errorRegenerar => {
-    if (errorRegenerar) {
-      return res.status(500).json({ error: 'No se pudo iniciar la sesión' });
-    }
-
-    req.session.usuarioId = usuario.id;
-    req.session.nombreUsuario = usuario.nombre_usuario;
-
-    req.session.save(errorGuardar => {
-      if (errorGuardar) {
-        return res.status(500).json({ error: 'No se pudo iniciar la sesión' });
-      }
-
-      res.status(estadoHttp).json({ usuario: { id: usuario.id, nombre_usuario: usuario.nombre_usuario } });
-    });
-  });
-}
 
 // ── POST /api/auth/registro ──────────────────────────────────
 router.post('/registro', limitadorRegistro, reglasRegistro, manejarErroresValidacion, async (req, res) => {
@@ -200,9 +146,26 @@ router.post('/logout', (req, res) => {
 });
 
 // ── GET /api/auth/me ─────────────────────────────────────────
-// El frontend lo consulta al cargar para saber si ya hay sesión.
-router.get('/me', requerirSesion, (req, res) => {
-  res.json({ usuario: { id: req.session.usuarioId, nombre_usuario: req.session.nombreUsuario } });
+// El frontend lo consulta al cargar para saber si ya hay sesión. El nombre
+// se lee de la base de datos (no de la sesión) para que un cambio de
+// usuario hecho desde otro dispositivo se refleje aquí.
+router.get('/me', requerirSesion, async (req, res) => {
+  try {
+    const usuario = await db.consultarUna('SELECT id, nombre_usuario FROM usuarios WHERE id = $1', [req.session.usuarioId]);
+
+    if (!usuario) {
+      // La cuenta ya no existe: la sesión no vale.
+      return req.session.destroy(() => {
+        res.clearCookie('studyflow.sid');
+        res.status(401).json({ error: 'Necesitas iniciar sesión' });
+      });
+    }
+
+    res.json({ usuario });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al consultar la sesión' });
+  }
 });
 
 module.exports = router;

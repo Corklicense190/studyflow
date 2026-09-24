@@ -24,6 +24,7 @@ ALTER TABLE public.entregables       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.horarios_fijos    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bloques_estudio   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.configuracion     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.perfiles          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sesiones          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.limites_intentos  ENABLE ROW LEVEL SECURITY;
 
@@ -32,5 +33,6 @@ REVOKE ALL ON public.entregables       FROM anon, authenticated;
 REVOKE ALL ON public.horarios_fijos    FROM anon, authenticated;
 REVOKE ALL ON public.bloques_estudio   FROM anon, authenticated;
 REVOKE ALL ON public.configuracion     FROM anon, authenticated;
+REVOKE ALL ON public.perfiles          FROM anon, authenticated;
 REVOKE ALL ON public.sesiones          FROM anon, authenticated;
 REVOKE ALL ON public.limites_intentos  FROM anon, authenticated;

@@ -84,6 +84,8 @@ describe('Registro', () => {
     expect(cookie).toMatch(/studyflow\.sid=/);
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/SameSite=Strict/i);
+    // Cookie "de sesión del navegador": sin fecha de vencimiento, no se guarda en disco.
+    expect(cookie).not.toMatch(/Max-Age|Expires/i);
 
     const yo = await agente.get('/api/auth/me');
     expect(yo.status).toBe(200);
