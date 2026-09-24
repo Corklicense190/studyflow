@@ -5,11 +5,13 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
+    "dev": "npm run build:css && node --watch server.js",
     "test": "jest",
     "lint": "eslint .",
-    "build:css": "tailwindcss -i ./public/css/input.css -o ./public/css/tailwind.css --minify",
-    "prestart": "npm run build:css"
+    "build:css": "tailwindcss -i ./public/css/input.css -o ./public/css/tailwind.css --minify"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "jest": {
     "testEnvironment": "node"

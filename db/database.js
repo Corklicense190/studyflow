@@ -14,12 +14,31 @@
 // better-sqlite3 funciona de forma SÍNCRONA, lo que simplifica
 // el código porque no necesitamos async/await en las consultas.
 const Database = require('better-sqlite3');
+const fs       = require('fs');
 const path     = require('path');
 
-// Ruta absoluta al archivo .db (queda en la raíz del proyecto).
-// DB_PATH permite usar otra (las pruebas automáticas usan ':memory:'
-// para no tocar la base de datos real).
-const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'studyflow.db');
+// Dónde vive el archivo .db, en este orden:
+//   1. DB_PATH, si está definido (las pruebas automáticas usan
+//      ':memory:' para no tocar la base de datos real).
+//   2. El volumen persistente de Railway (RAILWAY_VOLUME_MOUNT_PATH,
+//      que Railway define solo cuando se adjunta un volumen). En un
+//      despliegue el disco del contenedor se borra con cada deploy;
+//      lo único que sobrevive es el volumen, así que la base de datos
+//      TIENE que vivir ahí o se perderían todas las cuentas.
+//   3. La raíz del proyecto (desarrollo local).
+const dbPath = process.env.DB_PATH
+  || (process.env.RAILWAY_VOLUME_MOUNT_PATH && path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'studyflow.db'))
+  || path.join(__dirname, '..', 'studyflow.db');
+
+// Si la carpeta no existe todavía (ej. una ruta nueva en DB_PATH),
+// se crea; SQLite crea el archivo pero no las carpetas.
+if (dbPath !== ':memory:') {
+  // La ruta sale de variables de entorno que controla quien despliega
+  // el servidor, nunca de una petición de un usuario: no es un vector
+  // de path traversal.
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+}
 
 // Abrimos o creamos la base de datos.
 const db = new Database(dbPath);

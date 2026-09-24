@@ -48,5 +48,14 @@ jobs:
       - name: SCA — npm audit
         run: npm audit --audit-level=high
 
-      - name: Pruebas unitarias — Jest
+      - name: Pruebas unitarias y de seguridad — Jest
         run: npm test
+
+      # En producción se sirve public/css/tailwind.css TAL CUAL está en
+      # el repo (el servidor no compila nada). Este paso lo recompila y
+      # falla si el archivo commiteado no coincide, para que nunca se
+      # despliegue un CSS desactualizado por olvidar correr build:css.
+      - name: CSS compilado al día
+        run: |
+          npm run build:css
+          git diff --exit-code public/css/tailwind.css
