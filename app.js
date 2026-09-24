@@ -35,12 +35,33 @@ const app = express();
 // defecto" fijo en el código.
 let secretoSesion = process.env.SESSION_SECRET;
 
+// En PRODUCCIÓN no hay "plan B": sin un secreto propio y largo el
+// servidor NO arranca (falla cerrado). Un secreto débil o ausente en
+// un servidor público es justo lo que un atacante busca.
+if (process.env.NODE_ENV === 'production' && (!secretoSesion || secretoSesion.length < 32)) {
+  throw new Error('En producción SESSION_SECRET es obligatorio y debe tener al menos 32 caracteres.');
+}
+
 if (!secretoSesion) {
   secretoSesion = crypto.randomBytes(32).toString('hex');
 
   if (process.env.NODE_ENV !== 'test') {
     console.warn('⚠️  SESSION_SECRET no está definido en .env: se usa uno aleatorio y las sesiones se cerrarán al reiniciar el servidor.');
   }
+}
+
+// ── Detrás de un proxy (Railway) ─────────────────────────────
+// En Railway el navegador habla HTTPS con el proxy de la plataforma y
+// este con la app por HTTP normal. Sin "trust proxy", Express cree
+// que la conexión NO es segura (y no manda la cookie Secure) y ve la
+// IP del proxy en vez de la del visitante (el límite de intentos de
+// login contaría a TODOS como una sola persona). TRUST_PROXY es el
+// número de proxies de confianza delante de la app (1 en Railway).
+// Apagado por defecto: confiar en X-Forwarded-For sin proxy real
+// permitiría falsificar la IP.
+const saltosProxy = Number(process.env.TRUST_PROXY);
+if (Number.isInteger(saltosProxy) && saltosProxy > 0) {
+  app.set('trust proxy', saltosProxy);
 }
 
 // ── Middlewares globales ─────────────────────────────────────
