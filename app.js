@@ -157,6 +157,12 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ error: 'El cuerpo de la petición no es JSON válido' });
   }
 
+  // El detalle SOLO va al log del servidor (Runtime Logs de Vercel), nunca
+  // al cliente. Sin esta línea un 500 no deja rastro y no se puede
+  // diagnosticar. Solo se registra el mensaje y el código, no el objeto
+  // completo, para no volcar datos de la conexión.
+  console.error('Error no controlado:', req.method, req.path, err.code || '', err.message);
+
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
