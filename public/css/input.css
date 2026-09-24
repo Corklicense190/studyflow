@@ -561,6 +561,34 @@ button:disabled {
   border-left: 1px solid var(--borde);
 }
 
+/* Franja apagada: horas fuera de la ventana de estudio (el plan no agenda ahí,
+   pero las clases fijas sí se dibujan). Va antes en el HTML que los bloques,
+   así que estos quedan encima. */
+.calendario-fuera-ventana {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  background-color: color-mix(in srgb, var(--texto-3) 10%, transparent);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 6px,
+    color-mix(in srgb, var(--texto-3) 14%, transparent) 6px,
+    color-mix(in srgb, var(--texto-3) 14%, transparent) 7px
+  );
+}
+
+/* Cuadrito de la leyenda, con el mismo rayado. */
+.muestra-fuera-ventana {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 0.125rem;
+  border: 1px solid var(--borde-input);
+  background-image: repeating-linear-gradient(135deg, transparent 0, transparent 2px, var(--texto-3) 2px, var(--texto-3) 3px);
+}
+
 .calendario-linea-hora {
   position: absolute;
   left: 0;

@@ -33,6 +33,29 @@ let configuracionActual = { limite_horas_dia: 4, ventana_inicio: '07:00', ventan
 function ventanaInicioMin() { return horaAMinutosLocal(configuracionActual.ventana_inicio); }
 function ventanaFinMin()    { return horaAMinutosLocal(configuracionActual.ventana_fin); }
 
+// Primer minuto que dibuja el calendario. Normalmente es el inicio de la
+// ventana de estudio, pero se adelanta si hay una clase fuera de ella (ver
+// calcularRangoVisible). bloqueHtml lo usa para colocar cada bloque.
+let inicioVisibleMin = 0;
+
+// El calendario NO puede limitarse a la ventana de estudio: una clase fija a
+// las 08:00 con la ventana desde las 10:00 quedaría dibujada fuera de la
+// cuadrícula, encima del encabezado. Este rango incluye la ventana Y todo lo
+// que se va a dibujar, redondeado a horas completas (para que las líneas
+// de hora caigan justo en el borde). "tramos" es una lista de [inicio, fin] en
+// minutos.
+function calcularRangoVisible(inicioVentana, finVentana, tramos) {
+  let inicio = inicioVentana;
+  let fin = finVentana;
+
+  for (const [desde, hasta] of tramos) {
+    inicio = Math.min(inicio, desde);
+    fin = Math.max(fin, hasta);
+  }
+
+  return { inicio: Math.floor(inicio / 60) * 60, fin: Math.ceil(fin / 60) * 60 };
+}
+
 const DIAS_SEMANA_LOCAL = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 
 // El color de cada tipo lo elige el usuario (ver colores.js): estas clases
@@ -130,7 +153,7 @@ async function manejarSubmitConfiguracion(evento) {
 function bloqueHtml(horaInicio, horaFin, etiqueta, clasesColor, bloqueId = null, tieneNota = false) {
   const inicioMin = horaAMinutosLocal(horaInicio);
   const finMin = horaAMinutosLocal(horaFin);
-  const top = (inicioMin - ventanaInicioMin()) * PX_POR_MINUTO;
+  const top = (inicioMin - inicioVisibleMin) * PX_POR_MINUTO;
   const alto = (finMin - inicioMin) * PX_POR_MINUTO;
 
   const claseCorto = finMin - inicioMin <= 30 ? ' calendario-bloque-corto' : '';
@@ -168,9 +191,27 @@ function renderizarCalendario(bloques) {
 
   const fechas = bloques.map(b => b.fecha).sort();
   const dias = generarRangoFechas(fechas[0], fechas[fechas.length - 1]);
-  const inicioMin = ventanaInicioMin();
-  const finMin = ventanaFinMin();
+  // Rango que se dibuja: la ventana de estudio ampliada para que quepan las
+  // clases fijas de los días mostrados y cualquier bloque de estudio.
+  const diasMostrados = new Set(dias.map(diaDeLaSemanaLocal));
+  const tramos = [
+    ...horariosParaCalendario
+      .filter(h => diasMostrados.has(h.dia_semana))
+      .map(h => [horaAMinutosLocal(h.hora_inicio), horaAMinutosLocal(h.hora_fin)]),
+    ...bloques.map(b => [horaAMinutosLocal(b.hora_inicio), horaAMinutosLocal(b.hora_fin)]),
+  ];
+  const rango = calcularRangoVisible(ventanaInicioMin(), ventanaFinMin(), tramos);
+  const inicioMin = rango.inicio;
+  const finMin = rango.fin;
+  inicioVisibleMin = inicioMin;
   const alturaTotal = (finMin - inicioMin) * PX_POR_MINUTO;
+
+  // Zonas fuera del horario de estudio (solo existen si el rango se amplió):
+  // se pintan apagadas para que se entienda que ahí el plan no agenda nada.
+  const alturaAntesVentana = (ventanaInicioMin() - inicioMin) * PX_POR_MINUTO;
+  const topDespuesVentana = (ventanaFinMin() - inicioMin) * PX_POR_MINUTO;
+  const alturaDespuesVentana = (finMin - ventanaFinMin()) * PX_POR_MINUTO;
+  const hayZonaFuera = alturaAntesVentana > 0 || alturaDespuesVentana > 0;
 
   let html = `
     <div class="flex items-center gap-4 text-xs text-gray-600 mb-3">
@@ -178,6 +219,7 @@ function renderizarCalendario(bloques) {
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm tipo-evidencia"></span> Evidencia</span>
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm tipo-tarea"></span> Tarea</span>
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-gray-300"></span> Clase</span>
+      ${hayZonaFuera ? '<span class="flex items-center gap-1"><span class="muestra-fuera-ventana"></span> Fuera de tu horario de estudio</span>' : ''}
     </div>
     <div class="calendario-grid" style="--dias:${dias.length}">
   `;
@@ -201,6 +243,13 @@ function renderizarCalendario(bloques) {
     html += `<div>
       <div class="text-xs font-medium text-gray-700 text-center pb-1 border-b border-gray-200">${formatearEncabezadoDia(fecha)}</div>
       <div class="calendario-columna-dia" style="height:${alturaTotal}px">`;
+
+    if (alturaAntesVentana > 0) {
+      html += `<div class="calendario-fuera-ventana" style="top:0;height:${alturaAntesVentana}px"></div>`;
+    }
+    if (alturaDespuesVentana > 0) {
+      html += `<div class="calendario-fuera-ventana" style="top:${topDespuesVentana}px;height:${alturaDespuesVentana}px"></div>`;
+    }
 
     for (let min = inicioMin; min <= finMin; min += 60) {
       const top = (min - inicioMin) * PX_POR_MINUTO;
