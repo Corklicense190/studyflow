@@ -59,7 +59,7 @@ function renderizarEntregables() {
   tbody.innerHTML = entregablesCache.map(e => `
     <tr>
       <td class="px-4 py-2">${e.materia}</td>
-      <td class="px-4 py-2">${TIPO_ETIQUETA[e.tipo] || e.tipo}</td>
+      <td class="px-4 py-2"><span class="punto-tipo tipo-${TIPO_ETIQUETA[e.tipo] ? e.tipo : 'tarea'}"></span>${TIPO_ETIQUETA[e.tipo] || e.tipo}</td>
       <td class="px-4 py-2">${formatearFechaLegible(e.fecha_limite)}</td>
       <td class="px-4 py-2">${e.dificultad}</td>
       <td class="px-4 py-2">${e.duracion_estimada}h</td>

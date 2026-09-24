@@ -231,10 +231,10 @@ describe('Aislamiento de datos entre usuarios (IDOR)', () => {
   test('la configuración del algoritmo es por usuario', async () => {
     await ana.agente.put('/api/configuracion').send({ limite_horas_dia: 6, ventana_inicio: '09:00' });
 
-    expect((await ana.agente.get('/api/configuracion')).body).toEqual({
+    expect((await ana.agente.get('/api/configuracion')).body).toMatchObject({
       limite_horas_dia: 6, ventana_inicio: '09:00', ventana_fin: '22:00',
     });
-    expect((await beto.agente.get('/api/configuracion')).body).toEqual({
+    expect((await beto.agente.get('/api/configuracion')).body).toMatchObject({
       limite_horas_dia: 4, ventana_inicio: '07:00', ventana_fin: '22:00',
     });
   });

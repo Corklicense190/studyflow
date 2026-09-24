@@ -329,6 +329,36 @@
         </form>
       </div>
 
+      <!-- Color de cada tipo de entregable. A diferencia de la
+           configuración del algoritmo, esto se ve al instante y se
+           guarda solo al elegir el color (por usuario, en la base de datos). -->
+      <div class="bg-white rounded-lg border border-gray-200 mt-4 p-5">
+        <h3 class="text-sm font-semibold mb-1">Colores de los tipos</h3>
+        <p class="text-xs text-gray-500 mb-4">Elige cómo se ve cada tipo en el calendario y en la lista. Se guarda al elegir el color.</p>
+
+        <div class="flex flex-wrap items-end gap-4">
+          <div>
+            <label for="color-examen" class="block text-sm font-medium text-gray-700 mb-1">Examen</label>
+            <input type="color" id="color-examen" value="#fb7185"
+              class="h-10 w-16 rounded-md border border-gray-300 p-1 cursor-pointer" />
+          </div>
+          <div>
+            <label for="color-evidencia" class="block text-sm font-medium text-gray-700 mb-1">Evidencia</label>
+            <input type="color" id="color-evidencia" value="#818cf8"
+              class="h-10 w-16 rounded-md border border-gray-300 p-1 cursor-pointer" />
+          </div>
+          <div>
+            <label for="color-tarea" class="block text-sm font-medium text-gray-700 mb-1">Tarea</label>
+            <input type="color" id="color-tarea" value="#fbbf24"
+              class="h-10 w-16 rounded-md border border-gray-300 p-1 cursor-pointer" />
+          </div>
+          <button type="button" id="colores-restablecer"
+            class="rounded-md border border-gray-300 text-sm font-medium px-4 py-2 hover:bg-gray-50">
+            Restablecer colores
+          </button>
+        </div>
+      </div>
+
       <div id="plan-avisos" class="hidden mt-4 space-y-2"></div>
 
       <div id="plan-vacio" class="hidden bg-white rounded-lg border border-gray-200 mt-4 px-4 py-10 text-center text-sm text-gray-500">
@@ -366,6 +396,7 @@
   <script src="/js/api.js" defer></script>
   <script src="/js/ui.js" defer></script>
   <script src="/js/auth.js" defer></script>
+  <script src="/js/colores.js" defer></script>
   <script src="/js/entregables.js" defer></script>
   <script src="/js/horarios.js" defer></script>
   <script src="/js/plan.js" defer></script>

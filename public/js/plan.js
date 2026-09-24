@@ -20,7 +20,9 @@ function horaAMinutosLocal(hora) {
   return h * 60 + m;
 }
 
-const PX_POR_MINUTO = 0.8;
+// Más alto que antes (0.8): con la letra más grande cada bloque necesita
+// más espacio para que el nombre y el rango de horas se lean completos.
+const PX_POR_MINUTO = 1;
 
 // La ventana horaria y el límite diario ya NO son fijos: se leen de
 // /api/configuracion (tabla "configuracion", ajustable desde este
@@ -33,10 +35,12 @@ function ventanaFinMin()    { return horaAMinutosLocal(configuracionActual.venta
 
 const DIAS_SEMANA_LOCAL = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 
-const COLOR_POR_TIPO = {
-  examen: 'bg-rose-400 text-white',
-  evidencia: 'bg-indigo-400 text-white',
-  tarea: 'bg-amber-400 text-white',
+// El color de cada tipo lo elige el usuario (ver colores.js): estas clases
+// usan variables CSS, no colores fijos.
+const CLASE_POR_TIPO = {
+  examen: 'tipo-examen',
+  evidencia: 'tipo-evidencia',
+  tarea: 'tipo-tarea',
 };
 const DIA_CORTO = { domingo: 'Dom', lunes: 'Lun', martes: 'Mar', miercoles: 'Mié', jueves: 'Jue', viernes: 'Vie', sabado: 'Sáb' };
 
@@ -124,8 +128,10 @@ function bloqueHtml(horaInicio, horaFin, etiqueta, clasesColor) {
   const top = (inicioMin - ventanaInicioMin()) * PX_POR_MINUTO;
   const alto = (finMin - inicioMin) * PX_POR_MINUTO;
 
+  const claseCorto = finMin - inicioMin <= 30 ? ' calendario-bloque-corto' : '';
+
   return `
-    <div class="calendario-bloque ${clasesColor}" style="top:${top}px;height:${alto}px" title="${etiqueta} (${horaInicio}-${horaFin})">
+    <div class="calendario-bloque${claseCorto} ${clasesColor}" style="top:${top}px;height:${alto}px" title="${etiqueta} (${horaInicio}-${horaFin})">
       <span>${etiqueta}</span>
       <span class="calendario-bloque-horas">${horaInicio}-${horaFin}</span>
     </div>
@@ -153,9 +159,9 @@ function renderizarCalendario(bloques) {
 
   let html = `
     <div class="flex items-center gap-4 text-xs text-gray-600 mb-3">
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-rose-400"></span> Examen</span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-indigo-400"></span> Evidencia</span>
-      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-amber-400"></span> Tarea</span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm tipo-examen"></span> Examen</span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm tipo-evidencia"></span> Evidencia</span>
+      <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm tipo-tarea"></span> Tarea</span>
       <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-gray-300"></span> Clase</span>
     </div>
     <div class="calendario-grid" style="--dias:${dias.length}">
@@ -167,7 +173,7 @@ function renderizarCalendario(bloques) {
   for (let min = inicioMin; min <= finMin; min += 60) {
     const top = (min - inicioMin) * PX_POR_MINUTO;
     const hh = String(Math.floor(min / 60)).padStart(2, '0');
-    html += `<div class="absolute text-[10px] text-gray-400 -translate-y-1/2" style="top:${top}px">${hh}:00</div>`;
+    html += `<div class="absolute text-xs text-gray-500 -translate-y-1/2" style="top:${top}px">${hh}:00</div>`;
   }
   html += `</div>`;
 
@@ -192,7 +198,7 @@ function renderizarCalendario(bloques) {
       html += bloqueHtml(clase.hora_inicio, clase.hora_fin, clase.descripcion || 'Clase', 'bg-gray-300 text-gray-700');
     }
     for (const bloque of bloquesDelDia) {
-      const color = COLOR_POR_TIPO[bloque.tipo] || COLOR_POR_TIPO.tarea;
+      const color = CLASE_POR_TIPO[bloque.tipo] || CLASE_POR_TIPO.tarea;
       html += bloqueHtml(bloque.hora_inicio, bloque.hora_fin, bloque.materia, color);
     }
 
