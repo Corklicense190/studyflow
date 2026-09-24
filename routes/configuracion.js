@@ -15,6 +15,12 @@ const db = require('../db/database');
 // Mismo formato HH:MM en 24 horas que ya usa routes/horarios.js.
 const REGEX_HORA = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+// Color en hexadecimal de 6 dígitos (ej. #fb7185). Se exige ESTE formato
+// exacto (no nombres como "red", ni rgb(), ni url()...) porque el valor
+// termina dentro de una variable CSS en el navegador: así jamás puede
+// colarse CSS ajeno.
+const REGEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
 function manejarErroresValidacion(req, res, next) {
   const errores = validationResult(req);
 
@@ -34,7 +40,9 @@ function manejarErroresValidacion(req, res, next) {
 async function obtenerConfiguracion(usuarioId) {
   await db.ejecutar('INSERT INTO configuracion (usuario_id) VALUES ($1) ON CONFLICT DO NOTHING', [usuarioId]);
   return db.consultarUna(
-    'SELECT limite_horas_dia, ventana_inicio, ventana_fin FROM configuracion WHERE usuario_id = $1',
+    `SELECT limite_horas_dia, ventana_inicio, ventana_fin,
+            color_examen, color_evidencia, color_tarea
+     FROM configuracion WHERE usuario_id = $1`,
     [usuarioId]
   );
 }
@@ -72,6 +80,15 @@ router.put(
     .matches(REGEX_HORA)
     .withMessage('ventana_fin debe tener formato HH:MM (24 horas), ej. 22:00'),
 
+  // Colores por tipo de entregable. Se guardan en minúsculas para que
+  // "#FB7185" y "#fb7185" sean el mismo valor.
+  body(['color_examen', 'color_evidencia', 'color_tarea'])
+    .optional()
+    .trim()
+    .matches(REGEX_COLOR)
+    .withMessage('El color debe ser hexadecimal de 6 dígitos, ej. #fb7185')
+    .customSanitizer(valor => valor.toLowerCase()),
+
   // Si vienen los dos en la misma petición, validamos el orden aquí.
   // Si solo viene uno, se compara contra el valor ya guardado del usuario.
   body('ventana_fin').custom(async (ventanaFin, { req }) => {
@@ -88,7 +105,7 @@ router.put(
 
   manejarErroresValidacion,
   async (req, res) => {
-    const { limite_horas_dia, ventana_inicio, ventana_fin } = req.body;
+    const { limite_horas_dia, ventana_inicio, ventana_fin, color_examen, color_evidencia, color_tarea } = req.body;
     const usuarioId = req.session.usuarioId;
 
     try {
@@ -98,9 +115,16 @@ router.put(
         `UPDATE configuracion
          SET limite_horas_dia = COALESCE($1::integer, limite_horas_dia),
              ventana_inicio   = COALESCE($2::text, ventana_inicio),
-             ventana_fin      = COALESCE($3::text, ventana_fin)
-         WHERE usuario_id = $4`,
-        [limite_horas_dia ?? null, ventana_inicio || null, ventana_fin || null, usuarioId]
+             ventana_fin      = COALESCE($3::text, ventana_fin),
+             color_examen     = COALESCE($4::text, color_examen),
+             color_evidencia  = COALESCE($5::text, color_evidencia),
+             color_tarea      = COALESCE($6::text, color_tarea)
+         WHERE usuario_id = $7`,
+        [
+          limite_horas_dia ?? null, ventana_inicio || null, ventana_fin || null,
+          color_examen || null, color_evidencia || null, color_tarea || null,
+          usuarioId
+        ]
       );
 
       res.json({

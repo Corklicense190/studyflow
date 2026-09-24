@@ -122,6 +122,30 @@
 .text-amber-800 { color: var(--aviso-texto); }
 .border-amber-200 { border-color: var(--aviso-borde); }
 
+/* Letra más grande en toda la app (pedido de compañeros para leer mejor).
+   Todo el tamaño de Tailwind está en rem, así que subir la base del
+   documento agranda texto, números y espacios a la vez, y respeta el
+   zoom/tamaño de letra que el usuario ya tenga en su navegador. 112.5 %
+   son 18 px en vez de los 16 px por defecto. */
+html { font-size: 112.5%; }
+
+/* Colores por tipo de entregable. Las variables --color-examen... las
+   pone public/js/colores.js con el color que eligió el usuario;
+   --texto-sobre-... es blanco u oscuro, el que mejor contraste. Los
+   valores de respaldo son los colores originales de la app. */
+.tipo-examen { background-color: var(--color-examen, #fb7185); color: var(--texto-sobre-examen, #ffffff); }
+.tipo-evidencia { background-color: var(--color-evidencia, #818cf8); color: var(--texto-sobre-evidencia, #ffffff); }
+.tipo-tarea { background-color: var(--color-tarea, #fbbf24); color: var(--texto-sobre-tarea, #111827); }
+
+/* Cuadrito de color junto al tipo en la lista de entregables. */
+.punto-tipo {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: 0.5rem;
+  border-radius: 0.2rem;
+}
+
 /* Campos de formulario: el preflight de Tailwind los deja
    transparentes; en oscuro necesitan su propio fondo y texto. */
 input, select, textarea { background-color: var(--campo); color: var(--texto); }
@@ -177,7 +201,7 @@ input, select, textarea { background-color: var(--campo); color: var(--texto); }
 
 .calendario-grid {
   display: grid;
-  grid-template-columns: 60px repeat(var(--dias, 7), minmax(140px, 1fr));
+  grid-template-columns: 72px repeat(var(--dias, 7), minmax(165px, 1fr));
 }
 
 .calendario-columna-dia {
@@ -202,13 +226,32 @@ input, select, textarea { background-color: var(--campo); color: var(--texto); }
   border-radius: 0.375rem;
   overflow: hidden;
   padding: 2px 6px;
-  font-size: 0.75rem;
-  line-height: 1.1;
+  font-size: 0.875rem;
+  line-height: 1.15;
+}
+
+/* Un bloque de 30 min mide muy poco de alto: nombre y horas en UNA fila
+   (el nombre se recorta con "…" si no cabe) para que las horas no queden
+   cortadas abajo. */
+.calendario-bloque-corto {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.calendario-bloque-corto > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendario-bloque-corto .calendario-bloque-horas {
+  align-self: center;
 }
 
 .calendario-bloque-horas {
   align-self: flex-end;
-  font-size: 0.625rem;
-  opacity: 0.85;
+  font-size: 0.75rem;
+  opacity: 0.9;
   white-space: nowrap;
 }

@@ -69,6 +69,15 @@ CREATE TABLE IF NOT EXISTS configuracion (
   ventana_fin       TEXT NOT NULL DEFAULT '22:00'
 );
 
+-- Color que el usuario eligió para cada tipo de entregable (se ve en el
+-- calendario y en la lista). Van como ALTER ... IF NOT EXISTS para que
+-- este archivo se pueda volver a correr sobre una base que ya existía
+-- y le agregue las columnas nuevas sin tocar nada más. Los valores por
+-- defecto son los colores originales de la aplicación.
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS color_examen TEXT NOT NULL DEFAULT '#fb7185';
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS color_evidencia TEXT NOT NULL DEFAULT '#818cf8';
+ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS color_tarea TEXT NOT NULL DEFAULT '#fbbf24';
+
 -- Sesiones del servidor (express-session). En el navegador solo viaja
 -- un identificador aleatorio en una cookie httpOnly. "expira" son
 -- milisegundos desde 1970.

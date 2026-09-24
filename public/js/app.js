@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   mostrarVistaApp(usuario);
+  inicializarColores();
   inicializarEntregables();
   inicializarHorarios();
   inicializarPlan();
