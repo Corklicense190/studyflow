@@ -8,7 +8,6 @@
 // ============================================================
 
 process.env.NODE_ENV = 'test';
-process.env.DB_PATH = ':memory:';
 process.env.SESSION_SECRET = 'secreto-de-prueba-solo-para-jest';
 
 const request = require('supertest');

@@ -1,42 +1,30 @@
 // ============================================================
 // db/almacen-sesiones.js
-// Almacén de sesiones de express-session que guarda todo en la
-// tabla "sesiones" de SQLite, en vez del MemoryStore por defecto
-// (que pierde las sesiones al reiniciar el servidor y la propia
-// documentación de express-session dice que no es para uso real).
+// Almacén de sesiones de express-session sobre PostgreSQL (tabla
+// "sesiones"). En un entorno serverless (Vercel) la memoria NO se
+// comparte entre peticiones: cada una puede caer en una instancia
+// distinta, así que el MemoryStore por defecto perdería la sesión
+// constantemente. Guardarlas en la base de datos las hace válidas para
+// cualquier instancia, y permite cerrarlas de verdad en el servidor
+// (logout) en vez de depender de que el navegador borre una cookie.
 // Se escribió a mano para no sumar otra dependencia (y otra
-// superficie de ataque de la cadena de suministro) por ~40 líneas.
+// superficie de ataque de la cadena de suministro) por ~50 líneas.
 //
-// Nota de seguridad: la tabla guarda solo el estado de la sesión
-// (id del usuario); nunca contraseñas ni hashes.
+// La tabla guarda solo el estado de la sesión (id del usuario);
+// nunca contraseñas ni hashes.
 // ============================================================
 
 const session = require('express-session');
 const db      = require('./database');
 
 const OCHO_HORAS_MS = 8 * 60 * 60 * 1000;
-const CADA_QUINCE_MIN_MS = 15 * 60 * 1000;
 
-class AlmacenSesionesSQLite extends session.Store {
-  constructor() {
-    super();
+// express-session usa callbacks; nuestra base de datos, promesas.
+function conCallback(promesa, callback) {
+  promesa.then(resultado => callback(null, resultado), error => callback(error));
+}
 
-    // Sentencias preparadas una sola vez (y parametrizadas: el sid
-    // viene de una cookie, o sea de entrada no confiable).
-    this.sentenciaObtener = db.prepare('SELECT datos, expira FROM sesiones WHERE sid = ?');
-    this.sentenciaGuardar = db.prepare(`
-      INSERT INTO sesiones (sid, datos, expira) VALUES (?, ?, ?)
-      ON CONFLICT(sid) DO UPDATE SET datos = excluded.datos, expira = excluded.expira
-    `);
-    this.sentenciaBorrar  = db.prepare('DELETE FROM sesiones WHERE sid = ?');
-    this.sentenciaLimpiar = db.prepare('DELETE FROM sesiones WHERE expira <= ?');
-
-    // Barrido periódico de sesiones vencidas. unref() para que este
-    // temporizador no impida que el proceso termine (importante en Jest).
-    this.temporizador = setInterval(() => this.sentenciaLimpiar.run(Date.now()), CADA_QUINCE_MIN_MS);
-    this.temporizador.unref();
-  }
-
+class AlmacenSesionesPostgres extends session.Store {
   // Momento (ms) en que vence la sesión, según su cookie.
   calcularExpira(sesion) {
     const expiraCookie = sesion.cookie && sesion.cookie.expires;
@@ -44,44 +32,55 @@ class AlmacenSesionesSQLite extends session.Store {
   }
 
   get(sid, callback) {
-    try {
-      const fila = this.sentenciaObtener.get(sid);
+    conCallback((async () => {
+      const fila = await db.consultarUna('SELECT datos, expira FROM sesiones WHERE sid = $1', [sid]);
 
-      if (!fila) return callback(null, null);
+      if (!fila) return null;
 
       if (fila.expira <= Date.now()) {
-        this.sentenciaBorrar.run(sid);
-        return callback(null, null);
+        await db.ejecutar('DELETE FROM sesiones WHERE sid = $1', [sid]);
+        return null;
       }
 
-      callback(null, JSON.parse(fila.datos));
-    } catch (error) {
-      callback(error);
-    }
+      return JSON.parse(fila.datos);
+    })(), callback);
   }
 
   set(sid, sesion, callback) {
-    try {
-      this.sentenciaGuardar.run(sid, JSON.stringify(sesion), this.calcularExpira(sesion));
-      callback(null);
-    } catch (error) {
-      callback(error);
-    }
+    conCallback((async () => {
+      await db.ejecutar(
+        `INSERT INTO sesiones (sid, datos, expira) VALUES ($1, $2, $3)
+         ON CONFLICT (sid) DO UPDATE SET datos = excluded.datos, expira = excluded.expira`,
+        [sid, JSON.stringify(sesion), this.calcularExpira(sesion)]
+      );
+      this.limpiarDeVezEnCuando();
+    })(), callback);
   }
 
   // touch renueva el vencimiento cuando la sesión sigue activa (rolling).
   touch(sid, sesion, callback) {
-    this.set(sid, sesion, callback);
+    conCallback(
+      db.ejecutar('UPDATE sesiones SET expira = $2 WHERE sid = $1', [sid, this.calcularExpira(sesion)]),
+      callback
+    );
   }
 
   destroy(sid, callback) {
-    try {
-      this.sentenciaBorrar.run(sid);
-      callback(null);
-    } catch (error) {
-      callback(error);
-    }
+    conCallback(db.ejecutar('DELETE FROM sesiones WHERE sid = $1', [sid]), callback);
+  }
+
+  // No hay un proceso que corra "cada X minutos" en serverless, así
+  // que la limpieza de filas vencidas (sesiones y contadores del límite
+  // de intentos) se hace de paso, en ~2% de las escrituras.
+  limpiarDeVezEnCuando() {
+    if (Math.random() >= 0.02) return;
+
+    const ahora = Date.now();
+    Promise.all([
+      db.ejecutar('DELETE FROM sesiones WHERE expira <= $1', [ahora]),
+      db.ejecutar('DELETE FROM limites_intentos WHERE reinicia_en <= $1', [ahora]),
+    ]).catch(() => { /* limpieza oportunista: si falla, ya se hará después */ });
   }
 }
 
-module.exports = AlmacenSesionesSQLite;
+module.exports = AlmacenSesionesPostgres;

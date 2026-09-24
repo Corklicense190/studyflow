@@ -16,7 +16,8 @@ const express = require('express');
 const helmet  = require('helmet');
 const session = require('express-session');
 
-const AlmacenSesionesSQLite = require('./db/almacen-sesiones');
+const db = require('./db/database');
+const AlmacenSesionesPostgres = require('./db/almacen-sesiones');
 const { requerirSesion, verificarOrigen } = require('./middleware/seguridad');
 
 const auth          = require('./routes/auth');
@@ -83,10 +84,21 @@ app.use(express.static(path.join(__dirname, 'public')));
 // express.json() parsea el cuerpo JSON y lo deja en req.body.
 app.use(express.json());
 
+// Espera a que la base de datos esté lista (en pruebas, a que se aplique
+// el esquema) antes de atender cualquier petición de la API.
+app.use(async (req, res, next) => {
+  try {
+    await db.listo;
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.use(session({
   name: 'studyflow.sid',
   secret: secretoSesion,
-  store: new AlmacenSesionesSQLite(),
+  store: new AlmacenSesionesPostgres(),
   // No crear sesión (ni cookie) para visitantes que no han iniciado sesión.
   saveUninitialized: false,
   resave: false,

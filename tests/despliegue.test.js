@@ -17,7 +17,7 @@ jest.setTimeout(60000);
 // recargarlo) y restaura el entorno después.
 function cargarApp(entorno) {
   const respaldo = { ...process.env };
-  Object.assign(process.env, { DB_PATH: ':memory:' }, entorno);
+  Object.assign(process.env, entorno);
   for (const clave of Object.keys(entorno)) {
     if (entorno[clave] === undefined) delete process.env[clave];
   }

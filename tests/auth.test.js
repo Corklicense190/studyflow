@@ -14,9 +14,9 @@
 // ============================================================
 
 // Estas variables tienen que ponerse ANTES de cargar la app, porque
-// db/database.js y app.js las leen al cargarse.
+// db/database.js y app.js las leen al cargarse. (La base de datos en
+// las pruebas es Postgres EN MEMORIA, ver db/database.js.)
 process.env.NODE_ENV = 'test';
-process.env.DB_PATH = ':memory:';
 process.env.SESSION_SECRET = 'secreto-de-prueba-solo-para-jest';
 
 const request = require('supertest');
@@ -90,8 +90,8 @@ describe('Registro', () => {
     expect(yo.body.usuario.nombre_usuario).toBe('andre');
   });
 
-  test('la contraseña se guarda como hash bcrypt, nunca en claro', () => {
-    const fila = db.prepare('SELECT password_hash FROM usuarios WHERE nombre_usuario = ?').get('andre');
+  test('la contraseña se guarda como hash bcrypt, nunca en claro', async () => {
+    const fila = await db.consultarUna('SELECT password_hash FROM usuarios WHERE nombre_normalizado = $1', ['andre']);
 
     expect(fila.password_hash).toMatch(/^\$2[aby]\$\d{2}\$/);
     expect(fila.password_hash).not.toContain(PASSWORD);

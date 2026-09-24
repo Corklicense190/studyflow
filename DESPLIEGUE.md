@@ -1,59 +1,69 @@
-# Despliegue de StudyFlow en Railway
+# Despliegue de StudyFlow: Vercel + Supabase
 
-StudyFlow guarda todo (cuentas, sesiones, entregables) en un archivo SQLite, así que necesita un **disco persistente**. Railway lo ofrece con *volúmenes*. Por eso se eligió Railway y no una plataforma serverless (como Vercel), cuyo disco no persiste, ni el plan gratuito de Render, cuyo disco se borra en cada reinicio.
+- **Supabase** aloja la base de datos (PostgreSQL).
+- **Vercel** aloja la aplicación: el frontend (`public/`) lo sirve su CDN y la API de Express corre como una función serverless.
 
-## Requisitos previos
+Como en serverless la memoria y el disco no se comparten entre peticiones, **todo el estado vive en Postgres**: cuentas, entregables, horarios, las **sesiones** (`db/almacen-sesiones.js`) y los **contadores del límite de intentos de login** (`db/almacen-limites.js`).
 
-- El código en GitHub (`Corklicense190/studyflow`) con el pipeline de CI en verde.
-- Una cuenta en [railway.com](https://railway.com) (se puede entrar con GitHub). Los planes y límites cambian: revisa lo vigente en su página de precios antes de empezar.
+## 1. Supabase (base de datos)
 
-## Pasos
+1. Crea un proyecto en [supabase.com](https://supabase.com). Elige una región cercana a la de tus funciones de Vercel (por defecto `iad1`, este de EE. UU.) y guarda la contraseña de la base de datos.
+2. **Crear las tablas.** En el **SQL Editor**, pega el contenido de [`db/esquema.sql`](db/esquema.sql) y ejecútalo (*Run*).
+3. **Cerrar el acceso público a las tablas.** En el mismo editor ejecuta [`db/supabase-seguridad.sql`](db/supabase-seguridad.sql). Supabase publica por defecto las tablas mediante una API REST protegida solo por la llave `anon` (pública por diseño). StudyFlow no usa esa API, así que se bloquea (RLS activado sin políticas + permisos revocados). **No te saltes este paso**: sin él, cualquiera con la llave `anon` podría leer la tabla de usuarios.
+4. **Cadena de conexión.** Botón *Connect* → **Transaction pooler** (puerto **6543**, el que sirve para serverless). Cópiala y sustituye `[YOUR-PASSWORD]`. Este pooler no admite sentencias preparadas; el driver `pg` que usamos no las necesita.
+5. **Certificado para verificar el servidor.** *Database Settings* → *SSL Configuration* → descarga el certificado (`.crt`). Su contenido va en la variable `DATABASE_CA`. Sin él la conexión va cifrada pero no se verifica la identidad del servidor.
 
-1. **Crear el proyecto.** En Railway: *New Project* → *Deploy from GitHub repo* → elegir `studyflow`. Railway detecta Node.js, instala las dependencias y usa la configuración de `railway.json` (comando de arranque y *health check* en `/api/status`).
+## 2. Vercel (aplicación)
 
-2. **Adjuntar un volumen** al servicio (menú del proyecto → *Volume*, o clic derecho en el lienzo). Punto de montaje: `/data`.
-
-3. **Definir las variables** (pestaña *Variables* del servicio). Nunca se escriben en el repositorio.
+1. *Add New… → Project* → importa el repositorio de GitHub.
+2. *Framework Preset*: **Other**. Deja vacíos los comandos de build (el CSS ya viene compilado en `public/css/tailwind.css`).
+3. **Variables de entorno** (*Settings → Environment Variables*). Nunca se escriben en el repositorio:
 
    | Variable | Valor | Para qué |
    |---|---|---|
-   | `NODE_ENV` | `production` | Activa el modo producción; el servidor **no arranca** sin un secreto de sesión fuerte |
-   | `SESSION_SECRET` | una cadena aleatoria de 32+ caracteres | Firma la cookie de sesión |
+   | `DATABASE_URL` | la cadena del *Transaction pooler* | Conexión a Supabase (sin `?sslmode=`) |
+   | `DATABASE_CA` | contenido del certificado `.crt` | Verifica el certificado de la base de datos |
+   | `SESSION_SECRET` | cadena aleatoria de 32+ caracteres | Firma la cookie de sesión (sin él el servidor **no arranca** en producción) |
    | `COOKIE_SEGURA` | `true` | La cookie de sesión solo viaja por HTTPS |
-   | `TRUST_PROXY` | `1` | Confía en el proxy de Railway (IP real del visitante y detección de HTTPS) |
-   | `DB_PATH` | `/data/studyflow.db` | La base de datos vive dentro del volumen |
-   | `RAILWAY_RUN_UID` | `0` | Permite escribir en el volumen (Railway lo monta como root) |
+   | `TRUST_PROXY` | `1` | Confía en el proxy de Vercel (IP real del visitante y detección de HTTPS) |
 
-   Para generar el `SESSION_SECRET`, en tu terminal:
+   `NODE_ENV=production` lo define Vercel solo. Para generar el `SESSION_SECRET`:
 
    ```bash
    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
    ```
 
-   `PORT` lo define Railway solo.
+4. *Deploy*. Vercel detecta `app.js` (que exporta la app de Express) y usa Node 22 (`engines` en `package.json`).
 
-4. **Generar el dominio público.** Servicio → *Settings* → *Networking* → *Generate Domain*. Queda con HTTPS.
+## 3. Verificar que quedó bien
 
-## Verificar que quedó bien
-
-1. Abrir la URL: debe aparecer la pantalla de inicio de sesión.
-2. Crear una cuenta, agregar un entregable y generar el horario.
-3. **Prueba de persistencia:** en Railway, *Redeploy* del servicio. Al volver a entrar con la misma cuenta, los datos deben seguir ahí. Si desaparecen, el volumen o `DB_PATH` no quedaron bien configurados.
-4. Revisar los headers de seguridad:
+1. Abre la URL: debe aparecer la pantalla de inicio de sesión. Crea una cuenta, agrega un entregable y genera el horario.
+2. **Persistencia:** haz *Redeploy* y entra otra vez: los datos deben seguir ahí.
+3. **Headers de seguridad en los archivos estáticos** (los sirve la CDN, no Express; por eso están repetidos en `vercel.json`):
 
    ```bash
-   curl -I https://TU-DOMINIO.up.railway.app/
+   curl -I https://TU-DOMINIO.vercel.app/
    ```
 
-   Deben aparecer `strict-transport-security`, `content-security-policy` y `x-content-type-options`.
+   Deben aparecer `content-security-policy`, `strict-transport-security` y `x-content-type-options`.
+4. **La API pública de Supabase debe estar cerrada.** Con la llave `anon` de tu proyecto (*Project Settings → API*):
 
-## Despliegue continuo
+   ```bash
+   curl "https://TU-PROYECTO.supabase.co/rest/v1/usuarios?select=*" -H "apikey: TU_LLAVE_ANON"
+   ```
 
-Cada Pull Request que se fusiona en `main` (y que ya pasó el CI de GitHub Actions) redespliega la aplicación automáticamente. Si tu plan de Railway lo permite, activa la opción de esperar a que pasen los checks de GitHub antes de desplegar.
+   Debe responder un error de permisos, **nunca** filas de usuarios.
+5. En el *Table Editor* de Supabase, las 7 tablas deben mostrar RLS activado.
+
+## Desarrollo local
+
+Con Docker (opcional): `docker compose up -d` levanta un Postgres local y en `.env` usas las variables del bloque "Docker" de `.env.example` (`DATABASE_SSL=false` y `MIGRAR_AL_ARRANCAR=true` para que aplique el esquema solo). O bien apunta `DATABASE_URL` a un proyecto de Supabase de pruebas. Después `npm run dev`.
+
+Las pruebas (`npm test`) **no necesitan ninguna base de datos**: usan PGlite, PostgreSQL real compilado a WebAssembly y en memoria.
 
 ## Notas de seguridad
 
-- El `SESSION_SECRET` solo existe como variable en Railway. Si se cambia, todas las sesiones abiertas se cierran (los usuarios vuelven a iniciar sesión; no se pierden datos).
-- Las contraseñas se guardan únicamente como hash bcrypt; ni quien administra el servidor puede leerlas.
-- El CSS se sirve precompilado desde el repositorio (`public/css/tailwind.css`); el CI verifica que esté al día para no desplegar uno desactualizado.
-- Si alguna vez se necesita empezar de cero, basta con borrar el archivo `studyflow.db` del volumen.
+- Las variables (`SESSION_SECRET`, `DATABASE_URL`, `DATABASE_CA`) solo existen en Vercel. Si se cambia `SESSION_SECRET`, todas las sesiones abiertas se cierran (no se pierden datos).
+- Las contraseñas se guardan únicamente como hash bcrypt; ni quien administra la base de datos puede leerlas.
+- Todas las consultas van parametrizadas, y cada una filtra por el usuario de la sesión (un usuario no puede ver ni tocar datos ajenos).
+- Los planes gratuitos de estas plataformas tienen límites (por ejemplo, Supabase puede pausar proyectos sin actividad y las funciones serverless tienen arranque en frío). Revisa las condiciones vigentes de cada una antes de la presentación.
