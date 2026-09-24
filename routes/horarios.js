@@ -41,11 +41,14 @@ function manejarErroresValidacion(req, res, next) {
 // ── Reglas de validación compartidas entre POST y PUT ────────
 // Igual que en entregables.js: en PUT los campos son opcionales
 // (solo se actualiza lo que venga en el body).
-function reglasHorario(esOpcional) {
+// "diaObligatorio": al crear se puede mandar un solo día (dia_semana) o varios
+// (dias_semana, ver reglasDiasMultiples), así que ahí "dia_semana" deja de ser
+// obligatorio y la exigencia de "al menos un día" se comprueba aparte.
+function reglasHorario(esOpcional, diaObligatorio = !esOpcional) {
   const envoltura = (validador) => esOpcional ? validador.optional() : validador;
 
   return [
-    envoltura(body('dia_semana'))
+    (diaObligatorio ? body('dia_semana') : body('dia_semana').optional())
       .trim()
       .toLowerCase()
       .isIn(DIAS_VALIDOS)
@@ -84,30 +87,74 @@ function reglasHorario(esOpcional) {
   ];
 }
 
+// Varios días de una sola vez (ej. la misma clase de lunes a viernes).
+// "dias_semana" es un arreglo de 1 a 7 días; cada uno se valida igual que
+// "dia_semana". Los repetidos se ignoran (ver el POST).
+function reglasDiasMultiples() {
+  return [
+    body('dias_semana')
+      .optional()
+      .isArray({ min: 1, max: DIAS_VALIDOS.length })
+      .withMessage('dias_semana debe ser una lista de 1 a 7 días'),
+
+    body('dias_semana.*')
+      .isString()
+      .withMessage('cada día de dias_semana debe ser texto')
+      .bail()
+      .trim()
+      .toLowerCase()
+      .isIn(DIAS_VALIDOS)
+      .withMessage(`día inválido en dias_semana. Valores permitidos: ${DIAS_VALIDOS.join(', ')}`),
+
+    // Tiene que venir al menos un día, de una forma o de la otra.
+    body('dia_semana').custom((dia, { req }) => {
+      if (!dia && !req.body.dias_semana) {
+        throw new Error('Indica al menos un día (dia_semana o dias_semana)');
+      }
+      return true;
+    }),
+  ];
+}
+
 // ── POST /api/horarios-fijos ─────────────────────────────────
-// Registra un nuevo compromiso fijo (clase, trabajo, deporte…).
-// Campos requeridos: dia_semana, hora_inicio, hora_fin.
+// Registra un compromiso fijo (clase, trabajo, deporte…).
+// Campos requeridos: hora_inicio, hora_fin y el día: "dia_semana" (uno) o
+// "dias_semana" (varios; se crea un horario por cada día, todos o ninguno).
 // Campo opcional:   descripcion.
 router.post(
   '/',
-  reglasHorario(false),
+  reglasHorario(false, false),
+  reglasDiasMultiples(),
   manejarErroresValidacion,
   async (req, res) => {
-    const { dia_semana, hora_inicio, hora_fin, descripcion } = req.body;
+    const { dia_semana, dias_semana, hora_inicio, hora_fin, descripcion } = req.body;
+
+    // Una lista sin repetidos, en el orden en que llegó.
+    const dias = [...new Set(dias_semana || [dia_semana])];
 
     try {
-      // Si descripcion no vino en el body, insertamos NULL. usuario_id
-      // sale de la sesión, nunca del body.
-      const fila = await db.consultarUna(
+      // Un solo INSERT con una fila por día: o se crean todas o ninguna.
+      // Los valores viajan como parámetros; solo los marcadores ($n) se
+      // arman con texto. usuario_id sale de la sesión, nunca del body.
+      const parametros = [req.session.usuarioId, hora_inicio, hora_fin, descripcion || null];
+      const filasSql = dias.map((dia, i) => {
+        parametros.push(dia);
+        return `($1, $${i + 5}, $2, $3, $4)`;
+      });
+
+      const filas = await db.consultar(
         `INSERT INTO horarios_fijos (usuario_id, dia_semana, hora_inicio, hora_fin, descripcion)
-         VALUES ($1, $2, $3, $4, $5)
+         VALUES ${filasSql.join(', ')}
          RETURNING id`,
-        [req.session.usuarioId, dia_semana, hora_inicio, hora_fin, descripcion || null]
+        parametros
       );
 
       res.status(201).json({
-        mensaje: 'Horario fijo registrado exitosamente',
-        id: fila.id
+        mensaje: dias.length === 1
+          ? 'Horario fijo registrado exitosamente'
+          : `${dias.length} horarios fijos registrados exitosamente`,
+        id: filas[0].id,
+        ids: filas.map(f => f.id),
       });
     } catch (err) {
       console.error(err);

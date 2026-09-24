@@ -35,6 +35,10 @@ const TIPOS_VALIDOS = ['examen', 'evidencia', 'tarea'];
 const DIFICULTAD_AUTOMATICA = 5;
 const TIPOS_CON_DIFICULTAD_AUTOMATICA = ['examen', 'evidencia'];
 
+// Largo máximo de la nota (recordatorio de qué estudiar). Se mide ANTES
+// de escapar, para que el límite sea el que el usuario ve al escribir.
+const NOTAS_MAX = 500;
+
 // ── Middleware de manejo de errores de validación ────────────
 // Se coloca al final de cada cadena de validaciones. Si alguna
 // regla falló, corta la petición aquí con 400 y el detalle de
@@ -106,6 +110,18 @@ function reglasEntregable(esOpcional) {
       return true;
     }),
 
+    // Nota opcional. Se escapa igual que "materia" (se muestra en el
+    // navegador vía innerHTML). Puede venir vacía: en PUT, "" borra la nota.
+    body('notas')
+      .optional({ values: 'null' })
+      .isString()
+      .withMessage('notas debe ser texto')
+      .bail()
+      .trim()
+      .isLength({ max: NOTAS_MAX })
+      .withMessage(`notas puede tener máximo ${NOTAS_MAX} caracteres`)
+      .escape(),
+
     envoltura(body('duracion_estimada'))
       .isInt({ min: 1 })
       .withMessage('duracion_estimada debe ser un entero positivo (horas totales)')
@@ -120,7 +136,7 @@ router.post(
   reglasEntregable(false),
   manejarErroresValidacion,
   async (req, res) => {
-    const { materia, tipo, fecha_limite, dificultad, duracion_estimada } = req.body;
+    const { materia, tipo, fecha_limite, dificultad, duracion_estimada, notas } = req.body;
 
     // "examen" y "evidencia" siempre son dificultad 5 automático,
     // sin importar qué haya mandado el cliente; solo "tarea" respeta
@@ -135,8 +151,8 @@ router.post(
       // usuario_id sale de la SESIÓN, nunca del body: el cliente no
       // puede crear datos a nombre de otro usuario.
       const fila = await db.consultarUna(
-        `INSERT INTO entregables (usuario_id, materia, tipo, fecha_limite, dificultad, duracion_estimada)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO entregables (usuario_id, materia, tipo, fecha_limite, dificultad, duracion_estimada, notas)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING id`,
         [
           req.session.usuarioId,
@@ -145,6 +161,7 @@ router.post(
           new Date(fecha_limite).toISOString(),
           dificultadFinal,
           duracion_estimada,
+          notas ?? '',
         ]
       );
 
@@ -166,7 +183,7 @@ router.get('/', async (req, res) => {
   try {
     // Solo los del usuario de la sesión.
     const entregables = await db.consultar(
-      `SELECT id, materia, tipo, fecha_limite, dificultad, duracion_estimada, creado_en
+      `SELECT id, materia, tipo, fecha_limite, dificultad, duracion_estimada, notas, creado_en
        FROM entregables
        WHERE usuario_id = $1
        ORDER BY fecha_limite ASC, id ASC`,
@@ -189,7 +206,7 @@ router.put(
   manejarErroresValidacion,
   async (req, res) => {
     const { id } = req.params;
-    const { materia, tipo, fecha_limite, dificultad, duracion_estimada } = req.body;
+    const { materia, tipo, fecha_limite, dificultad, duracion_estimada, notas } = req.body;
 
     try {
       // El "AND usuario_id = ?" es lo que impide que un usuario edite
@@ -221,14 +238,16 @@ router.put(
              tipo              = COALESCE($2::text, tipo),
              fecha_limite      = COALESCE($3::text, fecha_limite),
              dificultad        = COALESCE($4::integer, dificultad),
-             duracion_estimada = COALESCE($5::integer, duracion_estimada)
-         WHERE id = $6 AND usuario_id = $7`,
+             duracion_estimada = COALESCE($5::integer, duracion_estimada),
+             notas             = COALESCE($6::text, notas)
+         WHERE id = $7 AND usuario_id = $8`,
         [
           materia ?? null,
           tipo ?? null,
           fecha_limite ? new Date(fecha_limite).toISOString() : null,
           dificultadFinal,
           duracion_estimada ?? null,
+          notas ?? null,
           id,
           req.session.usuarioId
         ]

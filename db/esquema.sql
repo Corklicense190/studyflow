@@ -37,6 +37,10 @@ CREATE TABLE IF NOT EXISTS entregables (
   duracion_estimada  INTEGER NOT NULL,
   creado_en          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Nota opcional del usuario (temas a estudiar, instrucciones, recordatorios).
+-- Va como ALTER ... IF NOT EXISTS para poder volver a correr este archivo
+-- sobre una base que ya existía sin tocar sus datos.
+ALTER TABLE entregables ADD COLUMN IF NOT EXISTS notas TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS entregables_usuario_idx ON entregables (usuario_id);
 
 -- Clases y compromisos recurrentes que el algoritmo nunca pisa.
@@ -77,6 +81,23 @@ CREATE TABLE IF NOT EXISTS configuracion (
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS color_examen TEXT NOT NULL DEFAULT '#fb7185';
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS color_evidencia TEXT NOT NULL DEFAULT '#818cf8';
 ALTER TABLE configuracion ADD COLUMN IF NOT EXISTS color_tarea TEXT NOT NULL DEFAULT '#fbbf24';
+
+-- Perfil del usuario: datos personales opcionales y su foto. La foto vive
+-- aquí (BYTEA) porque en Vercel no hay disco donde guardar archivos. El
+-- navegador la reduce a 256x256 antes de subirla (unos 20-40 KB) y el
+-- servidor rechaza todo lo que pese más de 300 KB. "foto_version" cambia
+-- con cada foto nueva y sirve para que el navegador no use una en caché.
+-- Los datos de texto se guardan ya escapados, igual que "materia".
+CREATE TABLE IF NOT EXISTS perfiles (
+  usuario_id    INTEGER PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
+  apodo         TEXT NOT NULL DEFAULT '',
+  institucion   TEXT NOT NULL DEFAULT '',
+  carrera       TEXT NOT NULL DEFAULT '',
+  sobre_mi      TEXT NOT NULL DEFAULT '',
+  foto          BYTEA,
+  foto_tipo     TEXT,
+  foto_version  BIGINT NOT NULL DEFAULT 0
+);
 
 -- Sesiones del servidor (express-session). En el navegador solo viaja
 -- un identificador aleatorio en una cookie httpOnly. "expira" son

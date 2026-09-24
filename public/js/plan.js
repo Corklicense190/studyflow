@@ -70,6 +70,10 @@ function generarRangoFechas(desde, hasta) {
 
 let horariosParaCalendario = [];
 
+// Bloques del plan tal como llegaron del servidor: el detalle que se abre al
+// tocar un bloque los busca aquí por id (sin volver a pedir nada).
+let bloquesActuales = [];
+
 function llenarFormularioConfiguracion(config) {
   document.getElementById('config-limite').value = config.limite_horas_dia;
   document.getElementById('config-ventana-inicio').value = config.ventana_inicio;
@@ -90,6 +94,7 @@ async function cargarPlan() {
     horariosParaCalendario = horarios;
     configuracionActual = config;
     llenarFormularioConfiguracion(config);
+    bloquesActuales = bloques;
     renderizarCalendario(bloques);
   } catch (error) {
     mostrarToast('error', `No se pudo cargar el plan: ${error.message}`);
@@ -122,7 +127,7 @@ async function manejarSubmitConfiguracion(evento) {
 // de un vistazo cuánto dura cada bloque sin tener que pasar el mouse.
 // "etiqueta" ya viene escapada por el servidor — segura tanto en
 // el contenido del div como en el atributo title.
-function bloqueHtml(horaInicio, horaFin, etiqueta, clasesColor) {
+function bloqueHtml(horaInicio, horaFin, etiqueta, clasesColor, bloqueId = null, tieneNota = false) {
   const inicioMin = horaAMinutosLocal(horaInicio);
   const finMin = horaAMinutosLocal(horaFin);
   const top = (inicioMin - ventanaInicioMin()) * PX_POR_MINUTO;
@@ -130,12 +135,22 @@ function bloqueHtml(horaInicio, horaFin, etiqueta, clasesColor) {
 
   const claseCorto = finMin - inicioMin <= 30 ? ' calendario-bloque-corto' : '';
 
-  return `
-    <div class="calendario-bloque${claseCorto} ${clasesColor}" style="top:${top}px;height:${alto}px" title="${etiqueta} (${horaInicio}-${horaFin})">
-      <span>${etiqueta}</span>
-      <span class="calendario-bloque-horas">${horaInicio}-${horaFin}</span>
-    </div>
-  `;
+  // Iconito de "tiene nota" junto al nombre, para verlo de un vistazo.
+  const marcaNota = tieneNota
+    ? '<svg class="calendario-nota" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-label="Tiene nota"><path d="M4 5h16M4 12h16M4 19h10"/></svg>'
+    : '';
+
+  const contenido = `
+      <span class="calendario-bloque-nombre">${etiqueta}${marcaNota}</span>
+      <span class="calendario-bloque-horas">${horaInicio}-${horaFin}</span>`;
+  const atributos = `class="calendario-bloque${claseCorto} ${clasesColor}" style="top:${top}px;height:${alto}px" title="${etiqueta} (${horaInicio}-${horaFin})"`;
+
+  // Los bloques de estudio son botones (se pueden tocar y usar con teclado);
+  // las clases fijas son solo contexto y siguen siendo un div.
+  if (bloqueId !== null) {
+    return `<button type="button" ${atributos} data-bloque-id="${Number(bloqueId)}">${contenido}</button>`;
+  }
+  return `<div ${atributos}>${contenido}</div>`;
 }
 
 function renderizarCalendario(bloques) {
@@ -199,7 +214,7 @@ function renderizarCalendario(bloques) {
     }
     for (const bloque of bloquesDelDia) {
       const color = CLASE_POR_TIPO[bloque.tipo] || CLASE_POR_TIPO.tarea;
-      html += bloqueHtml(bloque.hora_inicio, bloque.hora_fin, bloque.materia, color);
+      html += bloqueHtml(bloque.hora_inicio, bloque.hora_fin, bloque.materia, color, bloque.id, Boolean(bloque.notas));
     }
 
     html += `</div></div>`;
@@ -207,6 +222,65 @@ function renderizarCalendario(bloques) {
 
   html += `</div>`;
   envoltura.innerHTML = html;
+}
+
+// ── Detalle de un bloque (materia, sesión, fecha límite y nota) ──
+let entregableDelDetalle = null;
+
+function abrirModalBloque(bloque) {
+  entregableDelDetalle = bloque.entregable_id;
+
+  const chip = document.getElementById('bloque-tipo');
+  chip.textContent = TIPO_ETIQUETA[bloque.tipo] || bloque.tipo;
+  chip.className = `chip-tipo ${CLASE_POR_TIPO[bloque.tipo] || CLASE_POR_TIPO.tarea}`;
+
+  // Todo va con textContent salvo el título y la nota, que el servidor ya
+  // guarda escapados: se decodifican para mostrarlos como texto normal, nunca
+  // como HTML.
+  document.getElementById('bloque-titulo').textContent = decodificarEntidades(bloque.materia);
+  document.getElementById('bloque-sesion').textContent =
+    `${formatearEncabezadoDia(bloque.fecha)} · ${bloque.hora_inicio}-${bloque.hora_fin}`;
+  document.getElementById('bloque-limite').textContent = formatearFechaLegible(bloque.fecha_limite);
+
+  const notas = document.getElementById('bloque-notas');
+  if (bloque.notas) {
+    notas.textContent = decodificarEntidades(bloque.notas);
+    notas.classList.remove('nota-vacia');
+  } else {
+    notas.textContent = 'Sin nota. Puedes agregar qué estudiar editando el entregable.';
+    notas.classList.add('nota-vacia');
+  }
+
+  const modal = document.getElementById('modal-bloque');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  document.getElementById('bloque-cerrar').focus();
+}
+
+function cerrarModalBloque() {
+  const modal = document.getElementById('modal-bloque');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+
+// Tocar un bloque de estudio abre su detalle.
+function manejarClicCalendario(evento) {
+  const boton = evento.target.closest('button[data-bloque-id]');
+  if (!boton) return;
+
+  const bloque = bloquesActuales.find(b => String(b.id) === boton.dataset.bloqueId);
+  if (bloque) abrirModalBloque(bloque);
+}
+
+// Desde el detalle se salta directo a editar ese entregable.
+function editarEntregableDelDetalle() {
+  const entregable = entregablesCache.find(e => e.id === entregableDelDetalle);
+  cerrarModalBloque();
+  if (!entregable) return;
+
+  cambiarTab('entregables');
+  llenarFormularioEntregable(entregable);
+  document.getElementById('form-entregable').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Regla 8 del algoritmo: si algo no cupo antes de su fecha límite,
@@ -249,5 +323,12 @@ async function manejarGenerarPlan() {
 function inicializarPlan() {
   document.getElementById('plan-generar').addEventListener('click', manejarGenerarPlan);
   document.getElementById('form-configuracion').addEventListener('submit', manejarSubmitConfiguracion);
+  document.getElementById('plan-calendario-envoltura').addEventListener('click', manejarClicCalendario);
+  document.getElementById('bloque-cerrar').addEventListener('click', cerrarModalBloque);
+  document.getElementById('bloque-editar').addEventListener('click', editarEntregableDelDetalle);
+  document.getElementById('modal-bloque').addEventListener('click', (evento) => {
+    // Solo cierra si el clic fue en el fondo oscuro, no en la tarjeta.
+    if (evento.target.id === 'modal-bloque') cerrarModalBloque();
+  });
   cargarPlan();
 }

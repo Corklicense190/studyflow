@@ -6,6 +6,16 @@
 // rubrica de "facilidad de uso").
 // ============================================================
 
+// El servidor guarda los textos ya escapados (`<` -> `&lt;`). Para mostrarlos en
+// un innerHTML eso es lo correcto; pero para poner uno de vuelta en un campo de
+// formulario editable hay que devolverlo a texto normal. Un <textarea> nunca
+// ejecuta lo que se le mete por innerHTML, así que el truco es seguro.
+function decodificarEntidades(texto) {
+  const auxiliar = document.createElement('textarea');
+  auxiliar.innerHTML = texto;
+  return auxiliar.value;
+}
+
 // ── Toasts (mensajes flotantes temporales) ────────────────────
 function mostrarToast(tipo, texto) {
   const contenedor = document.getElementById('toast-container');

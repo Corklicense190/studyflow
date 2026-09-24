@@ -117,7 +117,9 @@ router.get('/', async (req, res) => {
          bloques_estudio.completado,
          entregables.id      AS entregable_id,
          entregables.materia,
-         entregables.tipo
+         entregables.tipo,
+         entregables.fecha_limite,
+         entregables.notas
        FROM bloques_estudio
        JOIN entregables ON entregables.id = bloques_estudio.entregable_id
        WHERE entregables.usuario_id = $1

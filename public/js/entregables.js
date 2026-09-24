@@ -7,6 +7,14 @@
 
 let entregablesCache = [];
 
+const NOTAS_MAX = 500;
+
+// Contador "120/500" bajo el cuadro de notas.
+function actualizarContadorNotas() {
+  const largo = document.getElementById('entregable-notas').value.length;
+  document.getElementById('entregable-notas-contador').textContent = `${largo}/${NOTAS_MAX}`;
+}
+
 const TIPO_ETIQUETA = { examen: 'Examen', evidencia: 'Evidencia', tarea: 'Tarea' };
 
 // Mismos tipos que TIPOS_CON_DIFICULTAD_AUTOMATICA en
@@ -58,7 +66,7 @@ function renderizarEntregables() {
   // y las muestra como texto plano, nunca las ejecuta como HTML.
   tbody.innerHTML = entregablesCache.map(e => `
     <tr>
-      <td class="px-4 py-2">${e.materia}</td>
+      <td class="px-4 py-2">${e.materia}${e.notas ? `<div class="nota-previa">${e.notas}</div>` : ''}</td>
       <td class="px-4 py-2"><span class="punto-tipo tipo-${TIPO_ETIQUETA[e.tipo] ? e.tipo : 'tarea'}"></span>${TIPO_ETIQUETA[e.tipo] || e.tipo}</td>
       <td class="px-4 py-2">${formatearFechaLegible(e.fecha_limite)}</td>
       <td class="px-4 py-2">${e.dificultad}</td>
@@ -78,6 +86,10 @@ function llenarFormularioEntregable(entregable) {
   document.getElementById('entregable-fecha').value = entregable.fecha_limite.slice(0, 10);
   document.getElementById('entregable-dificultad').value = entregable.dificultad;
   document.getElementById('entregable-duracion').value = entregable.duracion_estimada;
+  // "notas" ya viene escapada por el servidor; en un textarea se ve como texto plano
+  // y se decodifica para poder editarla.
+  document.getElementById('entregable-notas').value = decodificarEntidades(entregable.notas || '');
+  actualizarContadorNotas();
   actualizarVisibilidadDificultad();
 
   document.getElementById('entregables-form-titulo').textContent = 'Editar entregable';
@@ -92,6 +104,7 @@ function limpiarFormularioEntregable() {
   document.getElementById('entregable-submit').textContent = 'Agregar';
   document.getElementById('entregable-cancelar-edicion').classList.add('hidden');
   limpiarErroresFormulario('entregables-form-error');
+  actualizarContadorNotas();
   actualizarVisibilidadDificultad();
 }
 
@@ -107,6 +120,7 @@ async function manejarSubmitEntregable(evento) {
     tipo,
     fecha_limite: document.getElementById('entregable-fecha').value,
     duracion_estimada: Number(document.getElementById('entregable-duracion').value),
+    notas: document.getElementById('entregable-notas').value,
   };
 
   // Solo se manda dificultad cuando de verdad la elige el usuario
@@ -167,6 +181,7 @@ function inicializarEntregables() {
   document.getElementById('entregable-cancelar-edicion').addEventListener('click', limpiarFormularioEntregable);
   document.getElementById('entregables-lista').addEventListener('click', manejarClicListaEntregables);
   document.getElementById('entregable-tipo').addEventListener('change', actualizarVisibilidadDificultad);
+  document.getElementById('entregable-notas').addEventListener('input', actualizarContadorNotas);
   actualizarVisibilidadDificultad(); // estado inicial acorde al tipo por defecto
   cargarEntregables();
 }
