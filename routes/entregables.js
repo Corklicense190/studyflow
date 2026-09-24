@@ -2,7 +2,7 @@
 // routes/entregables.js
 // Router de Express que expone los endpoints CRUD para la
 // tabla "entregables". Cada operación usa consultas
-// parametrizadas de better-sqlite3 (nunca concatenación).
+// parametrizadas ($1, $2...), nunca concatenación.
 //
 // SEGURIDAD: toda entrada de usuario pasa por express-validator
 // antes de tocar la base de datos. Esto cubre dos huecos que se
@@ -11,6 +11,9 @@
 //      probó con <script>alert(1)</script> y se guardaba tal cual.
 //   2. "fecha_limite" aceptaba cualquier string, no solo fechas
 //      reales (ej. "hola" pasaba como fecha límite válida).
+//
+// AISLAMIENTO: cada consulta filtra por el usuario de la sesión
+// (req.session.usuarioId), que sale de la sesión y NUNCA del body.
 // ============================================================
 
 const express = require('express');
@@ -20,7 +23,7 @@ const { body, param, validationResult } = require('express-validator');
 // Reutilizamos la conexión ya abierta en db/database.js.
 const db = require('../db/database');
 
-// "tipo" no tiene CHECK a nivel de base de datos (db/database.js);
+// "tipo" no tiene CHECK a nivel de base de datos (db/esquema.sql);
 // esta lista es la única fuente de verdad de qué valores se aceptan.
 //
 // Regla de negocio (confirmada con el usuario): "examen" y
@@ -116,7 +119,7 @@ router.post(
   '/',
   reglasEntregable(false),
   manejarErroresValidacion,
-  (req, res) => {
+  async (req, res) => {
     const { materia, tipo, fecha_limite, dificultad, duracion_estimada } = req.body;
 
     // "examen" y "evidencia" siempre son dificultad 5 automático,
@@ -127,27 +130,27 @@ router.post(
       : dificultad;
 
     try {
-      const stmt = db.prepare(`
-        INSERT INTO entregables (usuario_id, materia, tipo, fecha_limite, dificultad, duracion_estimada)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `);
-
       // fecha_limite ya viene convertida a Date por .toDate(); la
       // guardamos como ISO string para mantener el formato de la tabla.
       // usuario_id sale de la SESIÓN, nunca del body: el cliente no
       // puede crear datos a nombre de otro usuario.
-      const resultado = stmt.run(
-        req.session.usuarioId,
-        materia,
-        tipo,
-        new Date(fecha_limite).toISOString(),
-        dificultadFinal,
-        duracion_estimada
+      const fila = await db.consultarUna(
+        `INSERT INTO entregables (usuario_id, materia, tipo, fecha_limite, dificultad, duracion_estimada)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id`,
+        [
+          req.session.usuarioId,
+          materia,
+          tipo,
+          new Date(fecha_limite).toISOString(),
+          dificultadFinal,
+          duracion_estimada,
+        ]
       );
 
       res.status(201).json({
         mensaje: 'Entregable creado exitosamente',
-        id: resultado.lastInsertRowid
+        id: fila.id
       });
     } catch (err) {
       console.error(err);
@@ -159,15 +162,16 @@ router.post(
 // ── GET /api/entregables ─────────────────────────────────────
 // Devuelve todos los entregables ordenados por fecha límite
 // (los más urgentes primero).
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     // Solo los del usuario de la sesión.
-    const entregables = db.prepare(`
-      SELECT id, materia, tipo, fecha_limite, dificultad, duracion_estimada, creado_en
-      FROM entregables
-      WHERE usuario_id = ?
-      ORDER BY fecha_limite ASC
-    `).all(req.session.usuarioId);
+    const entregables = await db.consultar(
+      `SELECT id, materia, tipo, fecha_limite, dificultad, duracion_estimada, creado_en
+       FROM entregables
+       WHERE usuario_id = $1
+       ORDER BY fecha_limite ASC, id ASC`,
+      [req.session.usuarioId]
+    );
 
     res.json(entregables);
   } catch (err) {
@@ -183,7 +187,7 @@ router.put(
   param('id').isInt({ min: 1 }).withMessage('id debe ser un entero positivo').toInt(),
   reglasEntregable(true),
   manejarErroresValidacion,
-  (req, res) => {
+  async (req, res) => {
     const { id } = req.params;
     const { materia, tipo, fecha_limite, dificultad, duracion_estimada } = req.body;
 
@@ -191,8 +195,10 @@ router.put(
       // El "AND usuario_id = ?" es lo que impide que un usuario edite
       // el entregable de otro adivinando su id (IDOR). Si el id existe
       // pero es de otro usuario, se responde 404 igual que si no existiera.
-      const existente = db.prepare('SELECT tipo FROM entregables WHERE id = ? AND usuario_id = ?')
-        .get(id, req.session.usuarioId);
+      const existente = await db.consultarUna(
+        'SELECT tipo FROM entregables WHERE id = $1 AND usuario_id = $2',
+        [id, req.session.usuarioId]
+      );
 
       if (!existente) {
         return res.status(404).json({ error: `No existe el entregable con id ${id}` });
@@ -206,24 +212,26 @@ router.put(
         ? DIFICULTAD_AUTOMATICA
         : (dificultad ?? null); // null -> COALESCE conserva la que ya tenía
 
-      const stmt = db.prepare(`
-        UPDATE entregables
-        SET materia           = COALESCE(?, materia),
-            tipo              = COALESCE(?, tipo),
-            fecha_limite      = COALESCE(?, fecha_limite),
-            dificultad        = COALESCE(?, dificultad),
-            duracion_estimada = COALESCE(?, duracion_estimada)
-        WHERE id = ? AND usuario_id = ?
-      `);
-
-      stmt.run(
-        materia,
-        tipo,
-        fecha_limite ? new Date(fecha_limite).toISOString() : null,
-        dificultadFinal,
-        duracion_estimada,
-        id,
-        req.session.usuarioId
+      // COALESCE($n, columna): si el campo no vino (null), conserva el
+      // valor actual. Los ::tipo le dicen a Postgres de qué tipo es el
+      // parámetro cuando llega null.
+      await db.ejecutar(
+        `UPDATE entregables
+         SET materia           = COALESCE($1::text, materia),
+             tipo              = COALESCE($2::text, tipo),
+             fecha_limite      = COALESCE($3::text, fecha_limite),
+             dificultad        = COALESCE($4::integer, dificultad),
+             duracion_estimada = COALESCE($5::integer, duracion_estimada)
+         WHERE id = $6 AND usuario_id = $7`,
+        [
+          materia ?? null,
+          tipo ?? null,
+          fecha_limite ? new Date(fecha_limite).toISOString() : null,
+          dificultadFinal,
+          duracion_estimada ?? null,
+          id,
+          req.session.usuarioId
+        ]
       );
 
       res.json({ mensaje: `Entregable ${id} actualizado correctamente` });
@@ -242,18 +250,20 @@ router.delete(
   '/:id',
   param('id').isInt({ min: 1 }).withMessage('id debe ser un entero positivo').toInt(),
   manejarErroresValidacion,
-  (req, res) => {
+  async (req, res) => {
     const { id } = req.params;
 
     try {
-      const existente = db.prepare('SELECT id FROM entregables WHERE id = ? AND usuario_id = ?')
-        .get(id, req.session.usuarioId);
+      // Un solo DELETE que ya filtra por dueño: si no había nada que
+      // borrar (no existe o es de otro usuario), responde 404.
+      const { filasAfectadas } = await db.ejecutar(
+        'DELETE FROM entregables WHERE id = $1 AND usuario_id = $2',
+        [id, req.session.usuarioId]
+      );
 
-      if (!existente) {
+      if (filasAfectadas === 0) {
         return res.status(404).json({ error: `No existe el entregable con id ${id}` });
       }
-
-      db.prepare('DELETE FROM entregables WHERE id = ? AND usuario_id = ?').run(id, req.session.usuarioId);
 
       res.json({ mensaje: `Entregable ${id} eliminado correctamente` });
     } catch (err) {
@@ -263,5 +273,5 @@ router.delete(
   }
 );
 
-// Exportamos el router para registrarlo en server.js.
+// Exportamos el router para registrarlo en app.js.
 module.exports = router;

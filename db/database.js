@@ -1,152 +1,201 @@
 // ============================================================
 // db/database.js
-// Responsabilidad: abrir (o crear) la base de datos SQLite y
-// asegurarse de que las tablas existan antes de que cualquier
-// ruta intente usarlas.
+// Conexión a PostgreSQL (Supabase) y pequeñas funciones de ayuda
+// para consultar. Todas las rutas usan SOLO estas funciones, y
+// TODAS las consultas van parametrizadas ($1, $2...): los datos del
+// usuario nunca se concatenan dentro del SQL (previene inyección SQL).
 //
-// Desde que se agregó autenticación, TODOS los datos de la app
-// pertenecen a un usuario (columna usuario_id). Las rutas siempre
-// filtran por el usuario de la sesión, así que un usuario nunca
-// puede ver ni tocar los entregables, horarios o configuración
-// de otro.
+// Diferencia importante con la versión anterior (SQLite): Postgres
+// se consulta por red, así que todo es asíncrono (await).
+//
+// Todos los datos de la app pertenecen a un usuario (usuario_id) y
+// las rutas siempre filtran por el de la sesión, así que un usuario
+// nunca puede ver ni tocar los datos de otro.
 // ============================================================
 
-// better-sqlite3 funciona de forma SÍNCRONA, lo que simplifica
-// el código porque no necesitamos async/await en las consultas.
-const Database = require('better-sqlite3');
-const fs       = require('fs');
-const path     = require('path');
+const fs   = require('fs');
+const path = require('path');
+const { Pool, types } = require('pg');
 
-// Dónde vive el archivo .db, en este orden:
-//   1. DB_PATH, si está definido (las pruebas automáticas usan
-//      ':memory:' para no tocar la base de datos real).
-//   2. El volumen persistente de Railway (RAILWAY_VOLUME_MOUNT_PATH,
-//      que Railway define solo cuando se adjunta un volumen). En un
-//      despliegue el disco del contenedor se borra con cada deploy;
-//      lo único que sobrevive es el volumen, así que la base de datos
-//      TIENE que vivir ahí o se perderían todas las cuentas.
-//   3. La raíz del proyecto (desarrollo local).
-const dbPath = process.env.DB_PATH
-  || (process.env.RAILWAY_VOLUME_MOUNT_PATH && path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'studyflow.db'))
-  || path.join(__dirname, '..', 'studyflow.db');
+// Postgres devuelve los BIGINT como texto (para no perder precisión).
+// Los nuestros (marcas de tiempo en milisegundos) caben de sobra en un
+// número de JavaScript, así que se convierten.
+types.setTypeParser(20, Number);
 
-// Si la carpeta no existe todavía (ej. una ruta nueva en DB_PATH),
-// se crea; SQLite crea el archivo pero no las carpetas.
-if (dbPath !== ':memory:') {
-  // La ruta sale de variables de entorno que controla quien despliega
-  // el servidor, nunca de una petición de un usuario: no es un vector
-  // de path traversal.
-  // eslint-disable-next-line security/detect-non-literal-fs-filename
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+// Las pruebas automáticas (Jest) usan PGlite: el motor REAL de
+// PostgreSQL compilado a WebAssembly, corriendo en memoria. Es Postgres
+// de verdad (mismas reglas, mismos códigos de error, ROLLBACK real), sin
+// instalar nada ni tocar ninguna base real, y cada archivo de pruebas
+// arranca con una base vacía. JEST_WORKER_ID lo define Jest; en un
+// servidor real nunca existe, así que no hay forma de que producción
+// caiga en la base en memoria.
+const enPruebas = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+
+// Solo se usa en pruebas (ver crearPool y transaccion).
+let motorPGlite = null;
+
+function crearPool() {
+  if (enPruebas) {
+    const { PGlite } = require('@electric-sql/pglite');
+    motorPGlite = new PGlite();
+
+    // Adaptador mínimo con la misma forma que pg.Pool (solo query).
+    return {
+      query: async (sql, parametros) => {
+        const resultado = await motorPGlite.query(sql, parametros);
+        return { rows: resultado.rows, rowCount: resultado.affectedRows ?? resultado.rows.length };
+      },
+    };
+  }
+
+  const url = process.env.DATABASE_URL;
+
+  if (!url) {
+    throw new Error(
+      'Falta DATABASE_URL (la cadena de conexión de Supabase). ' +
+      'Revisa .env.example o DESPLIEGUE.md.'
+    );
+  }
+
+  // Se quita "sslmode" de la URL: el cifrado se configura abajo, en un
+  // solo lugar, y así ningún parámetro de la URL lo puede pisar.
+  const conexion = new URL(url);
+  conexion.searchParams.delete('sslmode');
+
+  // Cifrado de la conexión con la base de datos:
+  //   - DATABASE_CA presente: se verifica el certificado del servidor
+  //     contra esa CA (el certificado raíz que Supabase publica). Es lo
+  //     correcto: evita que alguien en medio del camino se haga pasar
+  //     por la base de datos.
+  //   - Ausente: la conexión va cifrada pero NO se verifica la identidad
+  //     del servidor. Funciona, pero queda expuesta a ese ataque; por eso
+  //     se avisa en producción.
+  //   - DATABASE_SSL=false: solo para un Postgres local de desarrollo.
+  let ssl;
+  if (process.env.DATABASE_SSL === 'false') {
+    ssl = false;
+  } else if (process.env.DATABASE_CA) {
+    // Las variables de entorno de una sola línea traen los saltos de
+    // línea del certificado como "\n" literal; se restauran.
+    ssl = { ca: process.env.DATABASE_CA.replace(/\\n/g, '\n'), rejectUnauthorized: true };
+  } else {
+    ssl = { rejectUnauthorized: false };
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('⚠️  DATABASE_CA no está definido: la conexión a la base de datos va cifrada pero no se verifica el certificado del servidor.');
+    }
+  }
+
+  const pool = new Pool({
+    connectionString: conexion.toString(),
+    ssl,
+    // En serverless cada instancia abre pocas conexiones (el "pooler" de
+    // Supabase multiplica las conexiones hacia Postgres).
+    max: Number(process.env.DB_POOL_MAX) || 3,
+    idleTimeoutMillis: 10000,
+  });
+
+  // Si el servidor cierra una conexión que estaba INACTIVA (el pooler de
+  // Supabase lo hace de vez en cuando), el pool emite un evento "error".
+  // Un evento "error" sin manejador tira todo el proceso de Node; con este
+  // manejador solo se registra, el pool descarta esa conexión y abre otra
+  // cuando haga falta.
+  pool.on('error', (error) => {
+    console.error('Error en una conexión inactiva de la base de datos:', error.message);
+  });
+
+  return pool;
 }
 
-// Abrimos o creamos la base de datos.
-const db = new Database(dbPath);
+const pool = crearPool();
 
-// Activar claves foráneas (SQLite las desactiva por defecto).
-db.pragma('foreign_keys = ON');
+// ── Funciones de consulta ────────────────────────────────────
 
-// ── Detección del esquema viejo (anterior a la autenticación) ──
-// CREATE TABLE IF NOT EXISTS no modifica tablas que ya existen, así
-// que una studyflow.db creada antes de la autenticación se quedaría
-// sin la columna usuario_id y todo fallaría con errores confusos.
-// Mejor detenerse aquí con un mensaje claro.
-const tablaVieja = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'entregables'").get();
-if (tablaVieja) {
-  const columnas = db.prepare('PRAGMA table_info(entregables)').all().map(c => c.name);
-  if (!columnas.includes('usuario_id')) {
-    throw new Error(
-      'La base de datos studyflow.db tiene el esquema anterior a la autenticación (sin usuario_id). ' +
-      'Borra el archivo studyflow.db y vuelve a arrancar: se recreará con el esquema nuevo.'
-    );
+// Devuelve TODAS las filas (un arreglo, vacío si no hay).
+async function consultar(sql, parametros = []) {
+  const resultado = await pool.query(sql, parametros);
+  return resultado.rows;
+}
+
+// Devuelve la primera fila, o null si no hay ninguna.
+async function consultarUna(sql, parametros = []) {
+  const filas = await consultar(sql, parametros);
+  return filas.length > 0 ? filas[0] : null;
+}
+
+// Para INSERT/UPDATE/DELETE cuando importa cuántas filas se afectaron.
+async function ejecutar(sql, parametros = []) {
+  const resultado = await pool.query(sql, parametros);
+  return { filasAfectadas: resultado.rowCount };
+}
+
+// Corre varias consultas como UNA sola operación atómica: o se aplican
+// todas o no se aplica ninguna. "trabajo" recibe un objeto con las
+// mismas funciones consultar/consultarUna/ejecutar, atadas a la misma
+// conexión (una transacción vive en una sola conexión).
+async function transaccion(trabajo) {
+  // En pruebas (PGlite, una sola conexión) se usa su propia transacción,
+  // que además bloquea otras consultas mientras dura, como haría una
+  // conexión exclusiva. Si "trabajo" lanza un error, hace ROLLBACK.
+  if (motorPGlite) {
+    return motorPGlite.transaction(async (tx) => trabajo({
+      consultar: async (sql, parametros = []) => (await tx.query(sql, parametros)).rows,
+      consultarUna: async (sql, parametros = []) => (await tx.query(sql, parametros)).rows[0] || null,
+      ejecutar: async (sql, parametros = []) => {
+        const resultado = await tx.query(sql, parametros);
+        return { filasAfectadas: resultado.affectedRows ?? resultado.rows.length };
+      },
+    }));
+  }
+
+  const cliente = await pool.connect();
+
+  const enCliente = {
+    consultar: async (sql, parametros = []) => (await cliente.query(sql, parametros)).rows,
+    consultarUna: async (sql, parametros = []) => (await cliente.query(sql, parametros)).rows[0] || null,
+    ejecutar: async (sql, parametros = []) => ({ filasAfectadas: (await cliente.query(sql, parametros)).rowCount }),
+  };
+
+  try {
+    await cliente.query('BEGIN');
+    const resultado = await trabajo(enCliente);
+    await cliente.query('COMMIT');
+    return resultado;
+  } catch (error) {
+    try { await cliente.query('ROLLBACK'); } catch { /* la conexión ya falló: se descarta */ }
+    throw error;
+  } finally {
+    cliente.release();
   }
 }
 
-// ── Tabla 0: usuarios ────────────────────────────────────────
-// La contraseña NUNCA se guarda: solo su hash bcrypt (con sal
-// incluida). nombre_usuario es único sin distinguir mayúsculas.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS usuarios (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre_usuario  TEXT    NOT NULL UNIQUE COLLATE NOCASE,
-    password_hash   TEXT    NOT NULL,
-    creado_en       TEXT    DEFAULT (datetime('now'))
-  );
-`);
+// ── Esquema ──────────────────────────────────────────────────
 
-// ── Tabla 1: entregables ─────────────────────────────────────
-// Guarda tareas, exámenes y evidencias pendientes del alumno.
-// ON DELETE CASCADE: si se borra el usuario, se van sus datos.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS entregables (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    usuario_id        INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    materia           TEXT    NOT NULL,
-    tipo              TEXT    NOT NULL,
-    fecha_limite      TEXT    NOT NULL,
-    dificultad        INTEGER NOT NULL CHECK(dificultad BETWEEN 1 AND 5),
-    duracion_estimada INTEGER NOT NULL,
-    creado_en         TEXT    DEFAULT (datetime('now'))
-  );
-`);
+// Aplica db/esquema.sql (idempotente). Se hace solo en las pruebas y
+// cuando MIGRAR_AL_ARRANCAR=true (útil en desarrollo). En producción NO
+// se corre solo: el esquema se aplica una vez, a mano, en el SQL Editor
+// de Supabase (ver DESPLIEGUE.md). Así ningún arranque en frío de una
+// función serverless ejecuta DDL, y varias instancias no compiten.
+async function aplicarEsquema() {
+  const sql = fs.readFileSync(path.join(__dirname, 'esquema.sql'), 'utf8');
 
-// ── Tabla 2: horarios_fijos ──────────────────────────────────
-// Compromisos recurrentes (clases, trabajo…) que el generador
-// de horarios debe respetar al planificar el estudio.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS horarios_fijos (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    usuario_id  INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-    dia_semana  TEXT NOT NULL CHECK(dia_semana IN (
-                  'lunes','martes','miercoles','jueves',
-                  'viernes','sabado','domingo'
-                )),
-    hora_inicio TEXT NOT NULL,
-    hora_fin    TEXT NOT NULL,
-    descripcion TEXT
-  );
-`);
+  const sentencias = sql
+    .split('\n')
+    .filter(linea => !linea.trim().startsWith('--'))
+    .join('\n')
+    .split(';')
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
 
-// ── Tabla 3: bloques_estudio ─────────────────────────────────
-// Bloques de tiempo que el algoritmo asigna a cada entregable.
-// No lleva usuario_id propio: su dueño es el de su entregable.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS bloques_estudio (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    entregable_id  INTEGER NOT NULL REFERENCES entregables(id) ON DELETE CASCADE,
-    fecha          TEXT    NOT NULL,
-    hora_inicio    TEXT    NOT NULL,
-    hora_fin       TEXT    NOT NULL,
-    completado     INTEGER DEFAULT 0
-  );
-`);
+  for (const sentencia of sentencias) {
+    await pool.query(sentencia);
+  }
+}
 
-// ── Tabla 4: configuracion ───────────────────────────────────
-// Una fila POR USUARIO con los parámetros del algoritmo que puede
-// ajustar: límite de horas de estudio por día y ventana horaria.
-// Los DEFAULT son los valores confirmados originalmente (4h, 07:00-22:00);
-// la fila se crea con esos valores al registrarse o la primera vez
-// que se consulta.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS configuracion (
-    usuario_id        INTEGER PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
-    limite_horas_dia  INTEGER NOT NULL DEFAULT 4,
-    ventana_inicio    TEXT    NOT NULL DEFAULT '07:00',
-    ventana_fin       TEXT    NOT NULL DEFAULT '22:00'
-  );
-`);
+// Promesa que se cumple cuando la base de datos está lista para usarse.
+// app.js la espera antes de atender peticiones.
+const listo = (enPruebas || process.env.MIGRAR_AL_ARRANCAR === 'true')
+  ? aplicarEsquema()
+  : Promise.resolve();
+listo.catch(() => { /* el error se le reporta a quien la espere (app.js) */ });
 
-// ── Tabla 5: sesiones ────────────────────────────────────────
-// Sesiones del servidor (express-session). En el navegador solo
-// viaja un identificador aleatorio en una cookie httpOnly; lo demás
-// (quién eres) vive aquí. Ver db/almacen-sesiones.js.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS sesiones (
-    sid     TEXT    PRIMARY KEY,
-    datos   TEXT    NOT NULL,
-    expira  INTEGER NOT NULL
-  );
-`);
-
-// Exportamos la conexión para que los routers la reutilicen.
-module.exports = db;
+module.exports = { consultar, consultarUna, ejecutar, transaccion, listo };

@@ -5,10 +5,8 @@
 //
 // SEGURIDAD: mismo criterio que routes/entregables.js — toda
 // entrada de usuario pasa por express-validator antes de tocar
-// la base de datos. Antes las validaciones eran manuales (if's
-// sueltos); se migran aquí para mantener un solo estilo en todo
-// el proyecto y que "descripcion" también quede sanitizada
-// (antes no se tocaba y podía guardar HTML/JS tal cual).
+// la base de datos, "descripcion" se sanitiza (escapa) para evitar
+// XSS, y cada consulta filtra por el usuario de la sesión.
 // ============================================================
 
 const express = require('express');
@@ -94,22 +92,22 @@ router.post(
   '/',
   reglasHorario(false),
   manejarErroresValidacion,
-  (req, res) => {
+  async (req, res) => {
     const { dia_semana, hora_inicio, hora_fin, descripcion } = req.body;
 
     try {
-      const stmt = db.prepare(`
-        INSERT INTO horarios_fijos (usuario_id, dia_semana, hora_inicio, hora_fin, descripcion)
-        VALUES (?, ?, ?, ?, ?)
-      `);
-
       // Si descripcion no vino en el body, insertamos NULL. usuario_id
       // sale de la sesión, nunca del body.
-      const resultado = stmt.run(req.session.usuarioId, dia_semana, hora_inicio, hora_fin, descripcion || null);
+      const fila = await db.consultarUna(
+        `INSERT INTO horarios_fijos (usuario_id, dia_semana, hora_inicio, hora_fin, descripcion)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [req.session.usuarioId, dia_semana, hora_inicio, hora_fin, descripcion || null]
+      );
 
       res.status(201).json({
         mensaje: 'Horario fijo registrado exitosamente',
-        id: resultado.lastInsertRowid
+        id: fila.id
       });
     } catch (err) {
       console.error(err);
@@ -121,26 +119,27 @@ router.post(
 // ── GET /api/horarios-fijos ──────────────────────────────────
 // Devuelve todos los compromisos fijos ordenados por día y
 // luego por hora de inicio para facilitar su lectura.
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     // Ordenamos usando CASE para respetar el orden natural de la
-    // semana en lugar del orden alfabético de SQLite.
-    const horarios = db.prepare(`
-      SELECT id, dia_semana, hora_inicio, hora_fin, descripcion
-      FROM horarios_fijos
-      WHERE usuario_id = ?
-      ORDER BY
-        CASE dia_semana
-          WHEN 'lunes'     THEN 1
-          WHEN 'martes'    THEN 2
-          WHEN 'miercoles' THEN 3
-          WHEN 'jueves'    THEN 4
-          WHEN 'viernes'   THEN 5
-          WHEN 'sabado'    THEN 6
-          WHEN 'domingo'   THEN 7
-        END,
-        hora_inicio ASC
-    `).all(req.session.usuarioId);
+    // semana en lugar del orden alfabético.
+    const horarios = await db.consultar(
+      `SELECT id, dia_semana, hora_inicio, hora_fin, descripcion
+       FROM horarios_fijos
+       WHERE usuario_id = $1
+       ORDER BY
+         CASE dia_semana
+           WHEN 'lunes'     THEN 1
+           WHEN 'martes'    THEN 2
+           WHEN 'miercoles' THEN 3
+           WHEN 'jueves'    THEN 4
+           WHEN 'viernes'   THEN 5
+           WHEN 'sabado'    THEN 6
+           WHEN 'domingo'   THEN 7
+         END,
+         hora_inicio ASC`,
+      [req.session.usuarioId]
+    );
 
     res.json(horarios);
   } catch (err) {
@@ -156,31 +155,27 @@ router.put(
   param('id').isInt({ min: 1 }).withMessage('id debe ser un entero positivo').toInt(),
   reglasHorario(true),
   manejarErroresValidacion,
-  (req, res) => {
+  async (req, res) => {
     const { id } = req.params;
     const { dia_semana, hora_inicio, hora_fin, descripcion } = req.body;
 
     try {
-      // "AND usuario_id = ?": un usuario solo puede tocar sus propios
+      // "AND usuario_id = ...": un usuario solo puede tocar sus propios
       // horarios (si el id es de otro usuario, responde 404 igual que
       // si no existiera).
-      const existente = db.prepare('SELECT id FROM horarios_fijos WHERE id = ? AND usuario_id = ?')
-        .get(id, req.session.usuarioId);
+      const { filasAfectadas } = await db.ejecutar(
+        `UPDATE horarios_fijos
+         SET dia_semana  = COALESCE($1::text, dia_semana),
+             hora_inicio = COALESCE($2::text, hora_inicio),
+             hora_fin    = COALESCE($3::text, hora_fin),
+             descripcion = COALESCE($4::text, descripcion)
+         WHERE id = $5 AND usuario_id = $6`,
+        [dia_semana || null, hora_inicio || null, hora_fin || null, descripcion || null, id, req.session.usuarioId]
+      );
 
-      if (!existente) {
+      if (filasAfectadas === 0) {
         return res.status(404).json({ error: `No existe el horario fijo con id ${id}` });
       }
-
-      const stmt = db.prepare(`
-        UPDATE horarios_fijos
-        SET dia_semana  = COALESCE(?, dia_semana),
-            hora_inicio = COALESCE(?, hora_inicio),
-            hora_fin    = COALESCE(?, hora_fin),
-            descripcion = COALESCE(?, descripcion)
-        WHERE id = ? AND usuario_id = ?
-      `);
-
-      stmt.run(dia_semana || null, hora_inicio || null, hora_fin || null, descripcion || null, id, req.session.usuarioId);
 
       res.json({ mensaje: `Horario fijo ${id} actualizado correctamente` });
     } catch (err) {
@@ -195,18 +190,18 @@ router.delete(
   '/:id',
   param('id').isInt({ min: 1 }).withMessage('id debe ser un entero positivo').toInt(),
   manejarErroresValidacion,
-  (req, res) => {
+  async (req, res) => {
     const { id } = req.params;
 
     try {
-      const existente = db.prepare('SELECT id FROM horarios_fijos WHERE id = ? AND usuario_id = ?')
-        .get(id, req.session.usuarioId);
+      const { filasAfectadas } = await db.ejecutar(
+        'DELETE FROM horarios_fijos WHERE id = $1 AND usuario_id = $2',
+        [id, req.session.usuarioId]
+      );
 
-      if (!existente) {
+      if (filasAfectadas === 0) {
         return res.status(404).json({ error: `No existe el horario fijo con id ${id}` });
       }
-
-      db.prepare('DELETE FROM horarios_fijos WHERE id = ? AND usuario_id = ?').run(id, req.session.usuarioId);
 
       res.json({ mensaje: `Horario fijo ${id} eliminado correctamente` });
     } catch (err) {
@@ -216,5 +211,5 @@ router.delete(
   }
 );
 
-// Exportamos el router para registrarlo en server.js.
+// Exportamos el router para registrarlo en app.js.
 module.exports = router;

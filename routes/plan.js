@@ -2,12 +2,12 @@
 // routes/plan.js
 // Conecta el algoritmo puro (algoritmo/priorizar.js) con la
 // base de datos real. Es la unica pieza de este router que
-// sabe de Express y de SQLite; el algoritmo en si sigue sin
+// sabe de Express y de Postgres; el algoritmo en si sigue sin
 // importar ninguno de los dos.
 //
 // Por ahora siempre hace RECALCULO TOTAL (borra todos los
-// bloques_estudio y los regenera desde cero con todos los
-// entregables). La logica incremental de la regla 9 (detectar
+// bloques_estudio del usuario y los regenera desde cero con todos
+// sus entregables). La logica incremental de la regla 9 (detectar
 // conflicto directo vs. reubicar sin mover lo existente) queda
 // como mejora futura, confirmado con el usuario antes de
 // construir esta primera version.
@@ -22,18 +22,27 @@ const { generarPlanEstudio } = require('../algoritmo/priorizar');
 // ── POST /api/plan/generar ────────────────────────────────────
 // Dispara la generacion del horario. Se llama explicitamente
 // (ej. boton "Generar horario" en el frontend), no automatico.
-router.post('/generar', (req, res) => {
+router.post('/generar', async (req, res) => {
   try {
     // Todo se lee y se escribe SOLO para el usuario de la sesión.
     const usuarioId = req.session.usuarioId;
 
-    const entregables   = db.prepare('SELECT * FROM entregables WHERE usuario_id = ?').all(usuarioId);
-    const horariosFijos = db.prepare('SELECT * FROM horarios_fijos WHERE usuario_id = ?').all(usuarioId);
+    const entregables = await db.consultar(
+      'SELECT id, materia, tipo, fecha_limite, dificultad, duracion_estimada FROM entregables WHERE usuario_id = $1 ORDER BY id ASC',
+      [usuarioId]
+    );
+    const horariosFijos = await db.consultar(
+      'SELECT id, dia_semana, hora_inicio, hora_fin, descripcion FROM horarios_fijos WHERE usuario_id = $1',
+      [usuarioId]
+    );
 
     // Si por algún motivo su fila de configuración no existe, se crea
     // con los valores por defecto de la tabla.
-    db.prepare('INSERT OR IGNORE INTO configuracion (usuario_id) VALUES (?)').run(usuarioId);
-    const configuracion = db.prepare('SELECT * FROM configuracion WHERE usuario_id = ?').get(usuarioId);
+    await db.ejecutar('INSERT INTO configuracion (usuario_id) VALUES ($1) ON CONFLICT DO NOTHING', [usuarioId]);
+    const configuracion = await db.consultarUna(
+      'SELECT limite_horas_dia, ventana_inicio, ventana_fin FROM configuracion WHERE usuario_id = $1',
+      [usuarioId]
+    );
 
     // Los nombres de columnas (snake_case, como toda la BD) se
     // traducen aquí a los nombres que espera "opciones" en
@@ -50,27 +59,34 @@ router.post('/generar', (req, res) => {
     // recalculo total: no importa lo que ya estuviera agendado.
     const { bloques, avisos } = generarPlanEstudio(entregables, horariosFijos, [], opciones);
 
-    // db.transaction agrupa el DELETE + los INSERT en una sola
+    // La transaccion agrupa el DELETE + los INSERT en una sola
     // operacion atomica: si algo falla a la mitad, no se queda
     // la base de datos con un horario a medio borrar.
-    const regenerarHorario = db.transaction(() => {
+    await db.transaccion(async (tx) => {
       // Solo se borran los bloques de los entregables de ESTE usuario.
-      db.prepare(`
-        DELETE FROM bloques_estudio
-        WHERE entregable_id IN (SELECT id FROM entregables WHERE usuario_id = ?)
-      `).run(usuarioId);
+      await tx.ejecutar(
+        `DELETE FROM bloques_estudio
+         WHERE entregable_id IN (SELECT id FROM entregables WHERE usuario_id = $1)`,
+        [usuarioId]
+      );
 
-      const insertar = db.prepare(`
-        INSERT INTO bloques_estudio (entregable_id, fecha, hora_inicio, hora_fin)
-        VALUES (?, ?, ?, ?)
-      `);
+      // Todos los bloques en UNA sola sentencia (varias filas en un
+      // VALUES) en vez de un INSERT por bloque: la base de datos está
+      // al otro lado de la red y cada viaje cuesta decenas de ms.
+      // Lo único que se arma con texto son los marcadores ($1, $2...);
+      // los valores siempre viajan como parámetros.
+      if (bloques.length > 0) {
+        const marcadores = bloques
+          .map((_, i) => `($${i * 4 + 1}, $${i * 4 + 2}, $${i * 4 + 3}, $${i * 4 + 4})`)
+          .join(', ');
+        const valores = bloques.flatMap(b => [b.entregable_id, b.fecha, b.hora_inicio, b.hora_fin]);
 
-      for (const bloque of bloques) {
-        insertar.run(bloque.entregable_id, bloque.fecha, bloque.hora_inicio, bloque.hora_fin);
+        await tx.ejecutar(
+          `INSERT INTO bloques_estudio (entregable_id, fecha, hora_inicio, hora_fin) VALUES ${marcadores}`,
+          valores
+        );
       }
     });
-
-    regenerarHorario();
 
     res.status(201).json({
       mensaje: `Horario regenerado: ${bloques.length} bloques de estudio creados`,
@@ -90,23 +106,24 @@ router.post('/generar', (req, res) => {
 // Devuelve el horario ya generado, con el nombre y tipo de cada
 // entregable incluido (join) para que el frontend no tenga que
 // hacer una consulta aparte por cada bloque.
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const bloques = db.prepare(`
-      SELECT
-        bloques_estudio.id,
-        bloques_estudio.fecha,
-        bloques_estudio.hora_inicio,
-        bloques_estudio.hora_fin,
-        bloques_estudio.completado,
-        entregables.id      AS entregable_id,
-        entregables.materia,
-        entregables.tipo
-      FROM bloques_estudio
-      JOIN entregables ON entregables.id = bloques_estudio.entregable_id
-      WHERE entregables.usuario_id = ?
-      ORDER BY bloques_estudio.fecha ASC, bloques_estudio.hora_inicio ASC
-    `).all(req.session.usuarioId);
+    const bloques = await db.consultar(
+      `SELECT
+         bloques_estudio.id,
+         bloques_estudio.fecha,
+         bloques_estudio.hora_inicio,
+         bloques_estudio.hora_fin,
+         bloques_estudio.completado,
+         entregables.id      AS entregable_id,
+         entregables.materia,
+         entregables.tipo
+       FROM bloques_estudio
+       JOIN entregables ON entregables.id = bloques_estudio.entregable_id
+       WHERE entregables.usuario_id = $1
+       ORDER BY bloques_estudio.fecha ASC, bloques_estudio.hora_inicio ASC`,
+      [req.session.usuarioId]
+    );
 
     res.json(bloques);
   } catch (err) {

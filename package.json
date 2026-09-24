@@ -1,32 +1,33 @@
 {
   "name": "studyflow",
   "version": "1.0.0",
-  "description": "API para generación automática de horarios de estudio",
+  "description": "Optimizador de horarios de estudio (Express + PostgreSQL)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "npm run build:css && node --watch server.js",
-    "test": "jest",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "lint": "eslint .",
     "build:css": "tailwindcss -i ./public/css/input.css -o ./public/css/tailwind.css --minify"
   },
   "engines": {
-    "node": ">=22"
+    "node": "22.x"
   },
   "jest": {
     "testEnvironment": "node"
   },
   "dependencies": {
-    "bcrypt": "^6.0.0",
-    "better-sqlite3": "^9.4.3",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^18.0.3",
     "express": "^4.18.2",
     "express-rate-limit": "^8.7.0",
     "express-session": "^1.19.0",
     "express-validator": "^7.3.2",
-    "helmet": "^8.3.0"
+    "helmet": "^8.3.0",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/cli": "^4.3.3",
     "eslint": "^10.11.0",
     "eslint-plugin-security": "^4.0.1",

@@ -1,0 +1,22 @@
+# PostgreSQL local para DESARROLLO (opcional). Requiere Docker Desktop.
+#
+#   docker compose up -d      -> levanta la base de datos
+#   docker compose down       -> la apaga (los datos se conservan)
+#   docker compose down -v    -> la apaga y BORRA los datos
+#
+# Solo escucha en tu propia máquina (127.0.0.1). La contraseña es de
+# desarrollo a propósito: esta base nunca se expone ni se despliega.
+# Variables de .env para usarla: ver el bloque "Docker" de .env.example.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: desarrollo
+      POSTGRES_DB: studyflow
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - studyflow-datos:/var/lib/postgresql/data
+
+volumes:
+  studyflow-datos:

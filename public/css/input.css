@@ -12,7 +12,18 @@
    con Helmet. Con el CSS pre-compilado no hace falta abrir nada.
    ============================================================ */
 
-@import "tailwindcss";
+/* source(none) apaga la detección automática de Tailwind v4, que
+   escanea TODOS los archivos del repo (documentación, pruebas, SQL...)
+   buscando palabras que parezcan clases. Con eso, cualquier texto nuevo
+   en un archivo cualquiera (por ejemplo la palabra "table" o "inline" en
+   un comentario) metía o sacaba clases del CSS, y el resultado dependía
+   de qué archivos hubiera en cada máquina: el CI compilaba un CSS
+   distinto al commiteado y bloqueaba el merge. Ahora solo se escanea el
+   frontend, que es donde de verdad se usan las clases. Rutas relativas a
+   ESTE archivo. */
+@import "tailwindcss" source(none);
+@source "../index.html";
+@source "../js";
 
 /* ============================================================
    TEMAS: modo claro/oscuro + acento pastel a elegir

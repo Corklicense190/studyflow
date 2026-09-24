@@ -31,16 +31,18 @@ function manejarErroresValidacion(req, res, next) {
 // Devuelve la configuración del usuario; si su fila no existe (no
 // debería pasar: se crea al registrarse), la crea con los valores
 // por defecto de la tabla.
-function obtenerConfiguracion(usuarioId) {
-  db.prepare('INSERT OR IGNORE INTO configuracion (usuario_id) VALUES (?)').run(usuarioId);
-  return db.prepare('SELECT limite_horas_dia, ventana_inicio, ventana_fin FROM configuracion WHERE usuario_id = ?')
-    .get(usuarioId);
+async function obtenerConfiguracion(usuarioId) {
+  await db.ejecutar('INSERT INTO configuracion (usuario_id) VALUES ($1) ON CONFLICT DO NOTHING', [usuarioId]);
+  return db.consultarUna(
+    'SELECT limite_horas_dia, ventana_inicio, ventana_fin FROM configuracion WHERE usuario_id = $1',
+    [usuarioId]
+  );
 }
 
 // ── GET /api/configuracion ───────────────────────────────────
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    res.json(obtenerConfiguracion(req.session.usuarioId));
+    res.json(await obtenerConfiguracion(req.session.usuarioId));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al obtener la configuración' });
@@ -72,10 +74,11 @@ router.put(
 
   // Si vienen los dos en la misma petición, validamos el orden aquí.
   // Si solo viene uno, se compara contra el valor ya guardado del usuario.
-  body('ventana_fin').custom((ventanaFin, { req }) => {
+  body('ventana_fin').custom(async (ventanaFin, { req }) => {
     if (!ventanaFin) return true;
 
-    const inicio = req.body.ventana_inicio || obtenerConfiguracion(req.session.usuarioId).ventana_inicio;
+    const inicio = req.body.ventana_inicio
+      || (await obtenerConfiguracion(req.session.usuarioId)).ventana_inicio;
 
     if (ventanaFin <= inicio) {
       throw new Error('ventana_inicio debe ser anterior a ventana_fin');
@@ -84,24 +87,25 @@ router.put(
   }),
 
   manejarErroresValidacion,
-  (req, res) => {
+  async (req, res) => {
     const { limite_horas_dia, ventana_inicio, ventana_fin } = req.body;
     const usuarioId = req.session.usuarioId;
 
     try {
-      obtenerConfiguracion(usuarioId); // asegura que la fila exista
+      await obtenerConfiguracion(usuarioId); // asegura que la fila exista
 
-      db.prepare(`
-        UPDATE configuracion
-        SET limite_horas_dia = COALESCE(?, limite_horas_dia),
-            ventana_inicio   = COALESCE(?, ventana_inicio),
-            ventana_fin      = COALESCE(?, ventana_fin)
-        WHERE usuario_id = ?
-      `).run(limite_horas_dia ?? null, ventana_inicio || null, ventana_fin || null, usuarioId);
+      await db.ejecutar(
+        `UPDATE configuracion
+         SET limite_horas_dia = COALESCE($1::integer, limite_horas_dia),
+             ventana_inicio   = COALESCE($2::text, ventana_inicio),
+             ventana_fin      = COALESCE($3::text, ventana_fin)
+         WHERE usuario_id = $4`,
+        [limite_horas_dia ?? null, ventana_inicio || null, ventana_fin || null, usuarioId]
+      );
 
       res.json({
         mensaje: 'Configuración actualizada correctamente',
-        configuracion: obtenerConfiguracion(usuarioId),
+        configuracion: await obtenerConfiguracion(usuarioId),
       });
     } catch (err) {
       console.error(err);

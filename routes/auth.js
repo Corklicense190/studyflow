@@ -11,17 +11,20 @@
 //     usuarios midiendo tiempos de respuesta).
 //   - Se regenera el id de sesión al entrar (previene fijación de
 //     sesión).
-//   - Límite de intentos por IP (express-rate-limit) contra fuerza bruta.
+//   - Límite de intentos por IP (express-rate-limit) contra fuerza
+//     bruta, con los contadores en la base de datos para que valga en
+//     serverless (ver db/almacen-limites.js).
 //   - Cookie httpOnly (JavaScript no puede leerla, así un XSS no la
 //     roba) y SameSite=Strict (ver app.js).
 // ============================================================
 
 const express   = require('express');
-const bcrypt    = require('bcrypt');
+const bcrypt    = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
 
 const db = require('../db/database');
+const AlmacenLimitesPostgres = require('../db/almacen-limites');
 const { requerirSesion } = require('../middleware/seguridad');
 
 const router = express.Router();
@@ -32,12 +35,22 @@ const router = express.Router();
 const COSTO_BCRYPT = process.env.NODE_ENV === 'test' ? 4 : 12;
 
 // Hash de una contraseña que nadie conoce, para el caso "usuario
-// inexistente" del login (ver arriba).
-const HASH_SENUELO = bcrypt.hashSync('contrasena-senuelo-que-nadie-usa', COSTO_BCRYPT);
+// inexistente" del login (ver arriba). Se calcula la primera vez que
+// hace falta (no al arrancar) y se reutiliza.
+let hashSenuelo;
+function obtenerHashSenuelo() {
+  if (!hashSenuelo) {
+    hashSenuelo = bcrypt.hash('contrasena-senuelo-que-nadie-usa', COSTO_BCRYPT);
+  }
+  return hashSenuelo;
+}
 
 // bcrypt solo considera los primeros 72 BYTES de la contraseña; más
 // allá los ignora en silencio. Se rechaza en vez de truncar.
 const MAX_BYTES_PASSWORD = 72;
+
+// Código de error de Postgres para "violación de restricción UNIQUE".
+const POSTGRES_UNIQUE_VIOLATION = '23505';
 
 // ── Límites de intentos ──────────────────────────────────────
 const limitadorLogin = rateLimit({
@@ -45,6 +58,7 @@ const limitadorLogin = rateLimit({
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  store: new AlmacenLimitesPostgres('login'),
   // Solo cuentan los intentos fallidos: entrar bien no gasta cupo.
   skipSuccessfulRequests: true,
   message: { error: 'Demasiados intentos fallidos. Espera 15 minutos e inténtalo de nuevo.' },
@@ -55,6 +69,7 @@ const limitadorRegistro = rateLimit({
   limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  store: new AlmacenLimitesPostgres('registro'),
   message: { error: 'Demasiados registros desde esta dirección. Inténtalo más tarde.' },
 });
 
@@ -127,26 +142,26 @@ router.post('/registro', limitadorRegistro, reglasRegistro, manejarErroresValida
     const passwordHash = await bcrypt.hash(password, COSTO_BCRYPT);
 
     // Usuario y su configuración inicial se crean juntos o no se crea nada.
-    const crearUsuario = db.transaction(() => {
-      const resultado = db.prepare('INSERT INTO usuarios (nombre_usuario, password_hash) VALUES (?, ?)')
-        .run(nombre_usuario, passwordHash);
-      const id = Number(resultado.lastInsertRowid);
-      db.prepare('INSERT INTO configuracion (usuario_id) VALUES (?)').run(id);
-      return id;
-    });
-
     let id;
     try {
-      id = crearUsuario();
+      id = await db.transaccion(async (tx) => {
+        const fila = await tx.consultarUna(
+          'INSERT INTO usuarios (nombre_usuario, nombre_normalizado, password_hash) VALUES ($1, $2, $3) RETURNING id',
+          [nombre_usuario, nombre_usuario.toLowerCase(), passwordHash]
+        );
+        await tx.ejecutar('INSERT INTO configuracion (usuario_id) VALUES ($1)', [fila.id]);
+        return fila.id;
+      });
     } catch (error) {
-      if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      if (error.code === POSTGRES_UNIQUE_VIOLATION) {
         return res.status(409).json({ error: 'Ese nombre de usuario ya está en uso' });
       }
       throw error;
     }
 
     abrirSesion(req, res, { id, nombre_usuario }, 201);
-  } catch {
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Error al crear la cuenta' });
   }
 });
@@ -156,18 +171,22 @@ router.post('/login', limitadorLogin, reglasLogin, manejarErroresValidacion, asy
   const { nombre_usuario, password } = req.body;
 
   try {
-    const usuario = db.prepare('SELECT id, nombre_usuario, password_hash FROM usuarios WHERE nombre_usuario = ?')
-      .get(nombre_usuario);
+    const usuario = await db.consultarUna(
+      'SELECT id, nombre_usuario, password_hash FROM usuarios WHERE nombre_normalizado = $1',
+      [nombre_usuario.toLowerCase()]
+    );
 
     // Siempre se hace UNA comparación bcrypt, exista o no el usuario.
-    const coincide = await bcrypt.compare(password, usuario ? usuario.password_hash : HASH_SENUELO);
+    const hashAComparar = usuario ? usuario.password_hash : await obtenerHashSenuelo();
+    const coincide = await bcrypt.compare(password, hashAComparar);
 
     if (!usuario || !coincide) {
       return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
     }
 
     abrirSesion(req, res, usuario, 200);
-  } catch {
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Error al iniciar sesión' });
   }
 });
