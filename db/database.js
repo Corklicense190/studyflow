@@ -39,6 +39,13 @@ function crearPool() {
     const { PGlite } = require('@electric-sql/pglite');
     motorPGlite = new PGlite();
 
+    // Registra cómo cerrar esta base al terminar el archivo de pruebas
+    // (ver tests/cierre-de-base-de-datos.js). Una lista, porque una
+    // prueba puede cargar la app varias veces.
+    const motor = motorPGlite;
+    globalThis.__cierresDeBaseDeDatosDePruebas = globalThis.__cierresDeBaseDeDatosDePruebas || [];
+    globalThis.__cierresDeBaseDeDatosDePruebas.push(() => motor.close());
+
     // Adaptador mínimo con la misma forma que pg.Pool (solo query).
     return {
       query: async (sql, parametros) => {

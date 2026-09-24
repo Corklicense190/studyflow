@@ -8,7 +8,9 @@
 
 // dotenv carga las variables de .env en process.env. Se llama
 // antes que cualquier otro require que las use.
-require('dotenv').config();
+// quiet: sin el mensaje "injected env" que dotenv imprime en cada carga
+// (en las pruebas salía una vez por archivo y ensuciaba el log del CI).
+require('dotenv').config({ quiet: true });
 
 const crypto  = require('crypto');
 const path    = require('path');
